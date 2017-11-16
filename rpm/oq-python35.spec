@@ -2,6 +2,9 @@
 # Conditionals and other variables controlling the build
 # ======================================================
 
+# Override default installation
+%define _prefix /opt/openquake
+
 %global pybasever 3.5
 
 # pybasever without the dot:
@@ -95,8 +98,8 @@
 # ==================
 # Top-level metadata
 # ==================
-Summary: Version 3.5 of the Python programming language
-Name: python%{pyshortver}
+Summary: Version 3.5 of the Python programming language for OpenQuake
+Name: oq-python%{pyshortver}
 Version: %{pybasever}.3
 Release: 4%{?dist}
 License: Python
@@ -157,9 +160,6 @@ BuildRequires: xz-devel
 BuildRequires: zlib-devel
 
 Requires:      expat >= 2.1.0
-
-# Python 3 built with glibc >= 2.24.90-26 needs to require it (rhbz#1410644).
-Requires: glibc%{?_isa} >= 2.24.90-26
 
 BuildRequires: python-rpm-macros
 
@@ -428,9 +428,10 @@ URL: http://www.python.org/
 %global __requires_exclude ^python\\(abi\\) = 3\\..$
 %global __provides_exclude ^python\\(abi\\) = 3\\..$
 
+## OQ disabled
 # We keep those inside on purpose
-Provides: bundled(python3-pip) = 8.1.1
-Provides: bundled(python3-setuptools) = 20.10.1
+#Provides: bundled(python3-pip) = 8.1.1
+#Provides: bundled(python3-setuptools) = 20.10.1
 
 %description
 Python %{pybasever} package for developers.
@@ -671,7 +672,7 @@ make install DESTDIR=%{buildroot} INSTALL="install -p" EXTRA_CFLAGS="$MoreCFlags
   # but doing so generated noise when ldconfig was rerun (rhbz:562980)
   #
 %if 0%{?with_gdb_hooks}
-  DirHoldingGdbPy=%{_prefix}/lib/debug/%{_libdir}
+  DirHoldingGdbPy=%{_prefix}/usr/lib/debug/%{_libdir}
   PathOfGdbPy=$DirHoldingGdbPy/$PyInstSoName.debug-gdb.py
 
   mkdir -p %{buildroot}$DirHoldingGdbPy
@@ -1025,8 +1026,8 @@ CheckPython optimized
 %{_bindir}/idle%{pybasever}
 
 # https://bugzilla.redhat.com/show_bug.cgi?id=1476593
-%exclude /usr/lib/debug%{_libdir}/__pycache__/libpython%{pybasever}m.so.1.0.debug-gdb.cpython-%{pyshortver}.*py*
-%exclude /usr/lib/debug%{_libdir}/libpython%{pybasever}m.so.1.0.debug-gdb.py
+%exclude /opt/openquake/usr/lib/debug%{_libdir}/__pycache__/libpython%{pybasever}m.so.1.0.debug-gdb.cpython-%{pyshortver}.*py*
+%exclude /opt/openquake/usr/lib/debug%{_libdir}/libpython%{pybasever}m.so.1.0.debug-gdb.py
 
 %if 0%{?with_debug_build}
 %{_bindir}/python%{LDVERSION_debug}
