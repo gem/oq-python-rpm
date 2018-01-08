@@ -367,38 +367,31 @@ Patch206: 00206-remove-hf-from-arm-triplet.patch
 # Fedora needs the default mips64-linux-gnu
 Patch243: 00243-fix-mips64-triplet.patch
 
-# 00250 #
-# After  glibc-2.24.90, Python 3 failed to start on EL7 kernel
-# rhbz#1410175: https://bugzilla.redhat.com/show_bug.cgi?id=1410175
-# http://bugs.python.org/issue29157
-Patch250: 00250-getentropy.patch
-
-# 00259 #
-# Tolerate legacy invalid bytecode
-# This patch restores the ability to import legacy bytecode generated
-# by 3.5.0, 3.5.1 or 3.5.2, and modifies the eval loop to
-# avoid any harmful consequences from the potentially malformed legacy
-# bytecode.
-# Original import patch by Petr Viktorin, eval loop patch by Serhiy Storchaka,
-# and tests and integration by Nick Coghlan.
-Patch259: 00259-tolerate-legacy-invalid-bytecode.patch
-
-# 00267 #
-# Make pip installable inside a new venv when using the --system-site-packages flag
-# FIXED UPSTREAM: https://bugs.python.org/issue24875
-Patch267: 00267-install-pip-in-a-venv-with-system-site-packages.patch
-
-# 00269 #
-# Fix python's recompilation with common build commands when using
-# profile guided optimizations.
-# Fixed upstream: http://bugs.python.org/issue29243
-Patch269: 00269-fix-multiple-compilations-issue-with-pgo-builds.patch
+# 00264 #
+# test_pass_by_value was added in Python 3.5.4 and on aarch64
+# it is catching an error that was there, but wasn't tested before.
+# Since the Python 3.5 branch is on security bug fix mode only
+# we backport the fix from the master branch.
+# Fixed upstream: http://bugs.python.org/issue29804
+Patch264: 00264-fix-test-failing-on-aarch64.patch
 
 # 00270 #
 # Fix test_alpn_protocols from test_ssl as openssl > 1.1.0f
 # changed the behaviour of the ALPN hook.
 # Fixed upstream: http://bugs.python.org/issue30714
 Patch270: 00270-fix-ssl-alpn-hook-test.patch
+
+# 00273 #
+# Skip test_float_with_comma, which fails in Koji with UnicodeDecodeError
+# See https://bugzilla.redhat.com/show_bug.cgi?id=1484497
+# Reported upstream: https://bugs.python.org/issue31900
+Patch273: 00273-skip-float-test.patch
+
+# 00286 #
+# CVE-2017-1000158
+# Check & prevent integer overflow in PyString_DecodeEscape
+# Fixed upstream: https://bugs.python.org/issue30657
+Patch286: 00286-pystring-decodeescape-integer-overflow.patch
 
 # (New patches go here ^^^)
 #
@@ -512,11 +505,10 @@ rm -r Modules/zlib || exit 1
 %patch205 -p1
 %patch206 -p1
 %patch243 -p1
-%patch250 -p1
-%patch259 -p1
-%patch267 -p1
-%patch269 -p1
+%patch264 -p1
 %patch270 -p1
+%patch273 -p1
+%patch286 -p1
 
 # Currently (2010-01-15), http://docs.python.org/library is for 2.6, and there
 # are many differences between 2.6 and the Python 3 library.
