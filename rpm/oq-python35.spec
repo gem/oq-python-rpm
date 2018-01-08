@@ -100,8 +100,8 @@
 # ==================
 Summary: Version 3.5 of the Python programming language for OpenQuake
 Name: oq-python%{pyshortver}
-Version: %{pybasever}.3
-Release: 4%{?dist}
+Version: %{pybasever}.4
+Release: 1%{?dist}
 License: Python
 Group: Development/Languages
 
@@ -1051,49 +1051,5 @@ CheckPython optimized
 # ======================================================
 
 %changelog
-* Thu Aug 03 2017 Fedora Release Engineering <releng@fedoraproject.org> - 3.5.3-4
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Binutils_Mass_Rebuild
-
-* Thu Jul 27 2017 Fedora Release Engineering <releng@fedoraproject.org> - 3.5.3-3
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Mass_Rebuild
-
-* Mon Jun 26 2017 Charalampos Stratakis <cstratak@redhat.com> - 3.5.3-2
-- Fix test_alpn_protocols from test_ssl
-
-* Thu May 11 2017 Charalampos Stratakis <cstratak@redhat.com> - 3.5.3-1
-- Rebased to version 3.5.3 from F25
-- Enable profile guided optimizations for x86_64 and i686 architectures
-- Make pip installable in a new venv when using the --system-site-packages flag
-- Fix syntax error in %%py_byte_compile macro
-- Add patch 259 to work around magic number bump in Python 3.5.3
-
-* Sat Feb 11 2017 Fedora Release Engineering <releng@fedoraproject.org> - 3.5.2-9
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_26_Mass_Rebuild
-
-* Thu Jan 12 2017 Igor Gnatenko <ignatenko@redhat.com> - 3.5.2-8
-- Rebuild for readline 7.x
-
-* Tue Jan 10 2017 Charalampos Stratakis <cstratak@redhat.com> - 3.5.2-7
-- Require glibc >= 2.24.90-26 (rhbz#1410644)
-
-* Thu Jan 05 2017 Miro Hrončok <mhroncok@redhat.com> - 3.5.2-6
-- Don't blow up on EL7 kernel (random generator) (rhbz#1410175, rhbz#1410187)
-
-* Sun Jan 01 2017 Miro Hrončok <mhroncok@redhat.com> - 3.5.2-5
-- Update description
-
-* Sun Jan 01 2017 Miro Hrončok <mhroncok@redhat.com> - 3.5.2-4
-- Add patch for OpenSSL 1.1.0
-
-* Fri Oct 21 2016 Miro Hrončok <mhroncok@redhat.com> - 3.5.2-3
-- Reword the description
-
-* Tue Sep 13 2016 Miro Hrončok <mhroncok@redhat.com> - 3.5.2-2
-- Fixed .pyc bytecompilation
-- Remove unused configure flags
-
-* Mon Aug 15 2016 Tomas Orsava <torsava@redhat.com> - 3.5.2-1
-- Rebased to version 3.5.2 from F26
-
-* Tue Aug 09 2016 Miro Hrončok <mhroncok@redhat.com> - 3.5.1-14
-- Imported from F25
+* Mon Jan 08 2018 Daniele Viganò <daniele@openquake.org> - 3.5.4-1
+- First build based on Python 3.5.4
