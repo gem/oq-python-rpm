@@ -964,7 +964,6 @@ CheckPython optimized
 
 %{_bindir}/pydoc%{pybasever}
 %{_bindir}/python%{pybasever}
-%{_bindir}/python%{pyshortver}
 %{_bindir}/python%{pybasever}m
 %{_bindir}/pyvenv-%{pybasever}
 %{_mandir}/*/*
@@ -977,7 +976,6 @@ CheckPython optimized
 %attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages/__pycache__/
 %endif
 
-%{_libdir}/%{py_INSTSONAME_optimized}
 %if 0%{?with_systemtap}
 %dir %(dirname %{tapsetdir})
 %dir %{tapsetdir}
