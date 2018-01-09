@@ -1,10 +1,6 @@
-# base: python35-3.5.4-2.fc27.src
 # ======================================================
 # Conditionals and other variables controlling the build
 # ======================================================
-
-# Override default installation
-%define _prefix /opt/openquake
 
 %global pybasever 3.5
 
@@ -99,10 +95,10 @@
 # ==================
 # Top-level metadata
 # ==================
-Summary: Version 3.5 of the Python programming language for OpenQuake
-Name: oq-python%{pyshortver}
+Summary: Version 3.5 of the Python programming language
+Name: python%{pyshortver}
 Version: %{pybasever}.4
-Release: 1%{?dist}
+Release: 2%{?dist}
 License: Python
 Group: Development/Languages
 
@@ -117,7 +113,6 @@ BuildRequires: autoconf
 BuildRequires: bluez-libs-devel
 BuildRequires: bzip2
 BuildRequires: bzip2-devel
-BuildRequires: db4-devel >= 4.7
 
 # expat 2.1.0 added the symbol XML_SetHashSalt without bumping SONAME.  We use
 # it (in pyexpat) in order to enable the fix in Python-3.2.3 for CVE-2012-0876:
@@ -161,6 +156,9 @@ BuildRequires: xz-devel
 BuildRequires: zlib-devel
 
 Requires:      expat >= 2.1.0
+
+# Python 3 built with glibc >= 2.24.90-26 needs to require it (rhbz#1410644).
+Requires: glibc%{?_isa} >= 2.24.90-26
 
 BuildRequires: python-rpm-macros
 
@@ -422,10 +420,9 @@ URL: http://www.python.org/
 %global __requires_exclude ^python\\(abi\\) = 3\\..$
 %global __provides_exclude ^python\\(abi\\) = 3\\..$
 
-## OQ disabled
 # We keep those inside on purpose
-#Provides: bundled(python3-pip) = 8.1.1
-#Provides: bundled(python3-setuptools) = 20.10.1
+Provides: bundled(python3-pip) = 8.1.1
+Provides: bundled(python3-setuptools) = 20.10.1
 
 %description
 Python %{pybasever} package for developers.
@@ -665,7 +662,7 @@ make install DESTDIR=%{buildroot} INSTALL="install -p" EXTRA_CFLAGS="$MoreCFlags
   # but doing so generated noise when ldconfig was rerun (rhbz:562980)
   #
 %if 0%{?with_gdb_hooks}
-  DirHoldingGdbPy=%{_prefix}/usr/lib/debug/%{_libdir}
+  DirHoldingGdbPy=%{_prefix}/lib/debug/%{_libdir}
   PathOfGdbPy=$DirHoldingGdbPy/$PyInstSoName.debug-gdb.py
 
   mkdir -p %{buildroot}$DirHoldingGdbPy
@@ -1019,8 +1016,8 @@ CheckPython optimized
 %{_bindir}/idle%{pybasever}
 
 # https://bugzilla.redhat.com/show_bug.cgi?id=1476593
-%exclude /opt/openquake/usr/lib/debug%{_libdir}/__pycache__/libpython%{pybasever}m.so.1.0.debug-gdb.cpython-%{pyshortver}.*py*
-%exclude /opt/openquake/usr/lib/debug%{_libdir}/libpython%{pybasever}m.so.1.0.debug-gdb.py
+%exclude /usr/lib/debug%{_libdir}/__pycache__/libpython%{pybasever}m.so.1.0.debug-gdb.cpython-%{pyshortver}.*py*
+%exclude /usr/lib/debug%{_libdir}/libpython%{pybasever}m.so.1.0.debug-gdb.py
 
 %if 0%{?with_debug_build}
 %{_bindir}/python%{LDVERSION_debug}
@@ -1044,5 +1041,59 @@ CheckPython optimized
 # ======================================================
 
 %changelog
-* Mon Jan 08 2018 Daniele Viganò <daniele@openquake.org> - 3.5.4-1
-- First build based on python35-3.5.4-2.fc27.src
+* Tue Dec 05 2017 Miro Hrončok <mhroncok@redhat.com> - 3.5.4-2
+- Fix for CVE-2017-1000158
+- rhbz#1519603: https://bugzilla.redhat.com/show_bug.cgi?id=1519603
+
+* Mon Oct 30 2017 Charalampos Stratakis <cstratak@redhat.com> - 3.5.4-1
+- Rebased to version 3.5.4
+
+* Mon Aug 14 2017 David "Sanqui" Labský <dlabsky@redhat.com> - 3.5.3-5
+- Drop unused db4-devel dependency
+
+* Thu Aug 03 2017 Fedora Release Engineering <releng@fedoraproject.org> - 3.5.3-4
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Binutils_Mass_Rebuild
+
+* Thu Jul 27 2017 Fedora Release Engineering <releng@fedoraproject.org> - 3.5.3-3
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Mass_Rebuild
+
+* Mon Jun 26 2017 Charalampos Stratakis <cstratak@redhat.com> - 3.5.3-2
+- Fix test_alpn_protocols from test_ssl
+
+* Thu May 11 2017 Charalampos Stratakis <cstratak@redhat.com> - 3.5.3-1
+- Rebased to version 3.5.3 from F25
+- Enable profile guided optimizations for x86_64 and i686 architectures
+- Make pip installable in a new venv when using the --system-site-packages flag
+- Fix syntax error in %%py_byte_compile macro
+- Add patch 259 to work around magic number bump in Python 3.5.3
+
+* Sat Feb 11 2017 Fedora Release Engineering <releng@fedoraproject.org> - 3.5.2-9
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_26_Mass_Rebuild
+
+* Thu Jan 12 2017 Igor Gnatenko <ignatenko@redhat.com> - 3.5.2-8
+- Rebuild for readline 7.x
+
+* Tue Jan 10 2017 Charalampos Stratakis <cstratak@redhat.com> - 3.5.2-7
+- Require glibc >= 2.24.90-26 (rhbz#1410644)
+
+* Thu Jan 05 2017 Miro Hrončok <mhroncok@redhat.com> - 3.5.2-6
+- Don't blow up on EL7 kernel (random generator) (rhbz#1410175, rhbz#1410187)
+
+* Sun Jan 01 2017 Miro Hrončok <mhroncok@redhat.com> - 3.5.2-5
+- Update description
+
+* Sun Jan 01 2017 Miro Hrončok <mhroncok@redhat.com> - 3.5.2-4
+- Add patch for OpenSSL 1.1.0
+
+* Fri Oct 21 2016 Miro Hrončok <mhroncok@redhat.com> - 3.5.2-3
+- Reword the description
+
+* Tue Sep 13 2016 Miro Hrončok <mhroncok@redhat.com> - 3.5.2-2
+- Fixed .pyc bytecompilation
+- Remove unused configure flags
+
+* Mon Aug 15 2016 Tomas Orsava <torsava@redhat.com> - 3.5.2-1
+- Rebased to version 3.5.2 from F26
+
+* Tue Aug 09 2016 Miro Hrončok <mhroncok@redhat.com> - 3.5.1-14
+- Imported from F25
