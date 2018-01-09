@@ -962,6 +962,11 @@ CheckPython optimized
 %doc LICENSE README
 %doc Misc/README.valgrind Misc/valgrind-python.supp Misc/gdbinit
 
+
+%{_bindir}/pydoc3
+%{_bindir}/python3
+%{_bindir}/pyvenv
+
 %{_bindir}/pydoc%{pybasever}
 %{_bindir}/python%{pybasever}
 %{_bindir}/python%{pybasever}m
@@ -985,15 +990,20 @@ CheckPython optimized
 
 %{_includedir}/python%{LDVERSION_optimized}/
 
+%{_bindir}/python3-config
 %{_bindir}/python%{pybasever}-config
 %{_bindir}/python%{LDVERSION_optimized}-config
 %{_bindir}/python%{LDVERSION_optimized}-*-config
 %{_libdir}/libpython%{LDVERSION_optimized}.a
+%{_libdir}/pkgconfig/python3.pc
 %{_libdir}/pkgconfig/python-%{LDVERSION_optimized}.pc
 %{_libdir}/pkgconfig/python-%{pybasever}.pc
 %exclude %{_rpmconfigdir}/macros.d/macros.pybytecompile%{pybasever}
 
+
+%{_bindir}/python3-2to3
 %{_bindir}/2to3-%{pybasever}
+%{_bindir}/idle3
 %{_bindir}/idle%{pybasever}
 
 # https://bugzilla.redhat.com/show_bug.cgi?id=1476593
