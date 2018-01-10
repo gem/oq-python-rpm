@@ -103,7 +103,7 @@
 Summary: Version 3.5 of the Python programming language for OpenQuake
 Name: oq-python%{pyshortver}
 Version: %{pybasever}.4
-Release: 2%{?dist}
+Release: 3%{?dist}
 License: Python
 Group: Development/Languages
 
@@ -422,6 +422,8 @@ URL: http://www.python.org/
 #Provides: bundled(python3-pip) = 8.1.1
 #Provides: bundled(python3-setuptools) = 20.10.1
 
+Provides: oq-python3
+
 %description
 Python %{pybasever} package for developers.
 
@@ -590,9 +592,9 @@ BuildPython debug \
   python-debug \
   python%{pybasever}-debug \
 %ifarch %{ix86} x86_64 ppc %{power64}
-  "--with-pydebug --with-tsc --without-ensurepip" \
+  "--with-pydebug --with-tsc --with-ensurepip" \
 %else
-  "--with-pydebug --without-ensurepip" \
+  "--with-pydebug --with-ensurepip" \
 %endif
   false \
   -O0
@@ -602,9 +604,9 @@ BuildPython optimized \
   python \
   python%{pybasever} \
 %ifarch %{ix86} x86_64
-  "--without-ensurepip --enable-optimizations" \
+  "--with-ensurepip --enable-optimizations" \
 %else
-   "--without-ensurepip" \
+   "--with-ensurepip" \
 %endif
   true
 
@@ -966,19 +968,20 @@ CheckPython optimized
 %{_bindir}/pydoc3
 %{_bindir}/python3
 %{_bindir}/pyvenv
+%{_bindir}/pip3
 
 %{_bindir}/pydoc%{pybasever}
 %{_bindir}/python%{pybasever}
 %{_bindir}/python%{pybasever}m
 %{_bindir}/pyvenv-%{pybasever}
+%{_bindir}/pip-%{pybasever}
+%{_bindir}/easy_install-%{pybasever}
 %{_mandir}/*/*
 
 %{pylibdir}/
 
 %if "%{_lib}" == "lib64"
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages/__pycache__/
+{_prefix}/lib/python%{pybasever}
 %endif
 
 %if 0%{?with_systemtap}
@@ -1031,6 +1034,9 @@ CheckPython optimized
 # ======================================================
 
 %changelog
+* Wed Jan 10 2018 Daniele Viganò <daniele@openquake.org> - 3.5.4-3
+- Enable ensurepip
+
 * Tue Jan 09 2018 Daniele Viganò <daniele@openquake.org> - 3.5.4-2
 - Make python build statically linked
 
