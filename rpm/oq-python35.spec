@@ -974,14 +974,14 @@ CheckPython optimized
 %{_bindir}/python%{pybasever}
 %{_bindir}/python%{pybasever}m
 %{_bindir}/pyvenv-%{pybasever}
-%{_bindir}/pip-%{pybasever}
+%{_bindir}/pip%{pybasever}
 %{_bindir}/easy_install-%{pybasever}
 %{_mandir}/*/*
 
 %{pylibdir}/
 
 %if "%{_lib}" == "lib64"
-{_prefix}/lib/python%{pybasever}
+%{_prefix}/lib/python%{pybasever}
 %endif
 
 %if 0%{?with_systemtap}
