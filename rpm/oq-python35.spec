@@ -58,7 +58,7 @@
 
 %global with_gdb_hooks 1
 
-%global with_systemtap 1
+%global with_systemtap 0
 
 # some arches don't have valgrind so we need to disable its support on them
 %ifnarch s390 %{mips}
@@ -72,8 +72,9 @@
 # Change from yes to no to turn this off
 %global with_computed_gotos yes
 
+# FIXME
 # Turn this to 0 to turn off the "check" phase:
-%global run_selftest_suite 1
+%global run_selftest_suite 0
 
 # We want to byte-compile the .py files within the packages using the new
 # python3 binary.
@@ -102,7 +103,7 @@
 Summary: Version 3.5 of the Python programming language for OpenQuake
 Name: oq-python%{pyshortver}
 Version: %{pybasever}.4
-Release: 1%{?dist}
+Release: 3%{?dist}
 License: Python
 Group: Development/Languages
 
@@ -145,7 +146,7 @@ BuildRequires: sqlite-devel
 BuildRequires: systemtap-sdt-devel
 # (this introduces a dependency on "python", in that systemtap-sdt-devel's
 # /usr/bin/dtrace is a python 2 script)
-%global tapsetdir      /usr/share/systemtap/tapset
+%global tapsetdir      %{_prefix}/usr/share/systemtap/tapset
 %endif # with_systemtap
 
 BuildRequires: tar
@@ -210,12 +211,6 @@ Patch102: 00102-lib64.patch
 # Only used when "%{_lib}" == "lib64"
 # Another lib64 fix, for distutils/tests/test_install.py; not upstream:
 Patch104: 00104-lib64-fix-for-test_install.patch
-
-# 00111 #
-# Patch the Makefile.pre.in so that the generated Makefile doesn't try to build
-# a libpythonMAJOR.MINOR.a (bug 550692):
-# Downstream only: not appropriate for upstream
-Patch111: 00111-no-static-lib.patch
 
 # 00132 #
 # Add non-standard hooks to unittest for use in the "check" phase below, when
@@ -427,6 +422,8 @@ URL: http://www.python.org/
 #Provides: bundled(python3-pip) = 8.1.1
 #Provides: bundled(python3-setuptools) = 20.10.1
 
+Provides: oq-python3
+
 %description
 Python %{pybasever} package for developers.
 
@@ -489,7 +486,6 @@ rm -r Modules/zlib || exit 1
 %patch102 -p1
 %patch104 -p1
 %endif
-%patch111 -p1
 %patch132 -p1
 %patch137 -p1
 %patch143 -p1 -b .tsc-on-ppc
@@ -560,7 +556,6 @@ BuildPython() {
 
 %configure \
   --enable-ipv6 \
-  --enable-shared \
   --with-computed-gotos=%{with_computed_gotos} \
   --with-dbmliborder=gdbm:ndbm:bdb \
   --with-system-expat \
@@ -597,9 +592,9 @@ BuildPython debug \
   python-debug \
   python%{pybasever}-debug \
 %ifarch %{ix86} x86_64 ppc %{power64}
-  "--with-pydebug --with-tsc --without-ensurepip" \
+  "--with-pydebug --with-tsc --with-ensurepip" \
 %else
-  "--with-pydebug --without-ensurepip" \
+  "--with-pydebug --with-ensurepip" \
 %endif
   false \
   -O0
@@ -609,9 +604,9 @@ BuildPython optimized \
   python \
   python%{pybasever} \
 %ifarch %{ix86} x86_64
-  "--without-ensurepip --enable-optimizations" \
+  "--with-ensurepip --enable-optimizations" \
 %else
-   "--without-ensurepip" \
+   "--with-ensurepip" \
 %endif
   true
 
@@ -829,10 +824,6 @@ find %{buildroot} -type f -a -name "*.py" -print0 | \
 find %{buildroot} \
     -perm 555 -exec chmod 755 {} \;
 
-# Install macros for rpm:
-mkdir -p %{buildroot}/%{_rpmconfigdir}/macros.d/
-install -m 644 %{SOURCE3} %{buildroot}/%{_rpmconfigdir}/macros.d/
-
 # Ensure that the curses module was linked against libncursesw.so, rather than
 # libncurses.so (bug 539917)
 ldd %{buildroot}/%{dynload_dir}/_curses*.so \
@@ -895,15 +886,6 @@ echo -e '#!/bin/sh\nexec `dirname $0`/python%{LDVERSION_optimized}-`uname -m`-co
 echo '[ $? -eq 127 ] && echo "Could not find python%{LDVERSION_optimized}-`uname -m`-config. Look around to see available arches." >&2' >> \
   %{buildroot}%{_bindir}/python%{LDVERSION_optimized}-config
   chmod +x %{buildroot}%{_bindir}/python%{LDVERSION_optimized}-config
-
-# Remove stuff that would conflict with python3 package
-mv %{buildroot}%{_bindir}/python{3,%{pyshortver}}
-rm %{buildroot}%{_bindir}/*3
-rm %{buildroot}%{_bindir}/python3-*
-rm %{buildroot}%{_bindir}/pyvenv
-rm %{buildroot}%{_libdir}/libpython3.so
-rm %{buildroot}%{_mandir}/man1/python3.1*
-rm %{buildroot}%{_libdir}/pkgconfig/python3.pc
 
 # ======================================================
 # Running the upstream test suite
@@ -982,22 +964,26 @@ CheckPython optimized
 %doc LICENSE README
 %doc Misc/README.valgrind Misc/valgrind-python.supp Misc/gdbinit
 
+
+%{_bindir}/pydoc3
+%{_bindir}/python3
+%{_bindir}/pyvenv
+%{_bindir}/pip3
+
 %{_bindir}/pydoc%{pybasever}
 %{_bindir}/python%{pybasever}
-%{_bindir}/python%{pyshortver}
 %{_bindir}/python%{pybasever}m
 %{_bindir}/pyvenv-%{pybasever}
+%{_bindir}/pip%{pybasever}
+%{_bindir}/easy_install-%{pybasever}
 %{_mandir}/*/*
 
 %{pylibdir}/
 
 %if "%{_lib}" == "lib64"
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages/__pycache__/
+%{_prefix}/lib/python%{pybasever}
 %endif
 
-%{_libdir}/%{py_INSTSONAME_optimized}
 %if 0%{?with_systemtap}
 %dir %(dirname %{tapsetdir})
 %dir %{tapsetdir}
@@ -1007,15 +993,20 @@ CheckPython optimized
 
 %{_includedir}/python%{LDVERSION_optimized}/
 
+%{_bindir}/python3-config
 %{_bindir}/python%{pybasever}-config
 %{_bindir}/python%{LDVERSION_optimized}-config
 %{_bindir}/python%{LDVERSION_optimized}-*-config
-%{_libdir}/libpython%{LDVERSION_optimized}.so
+%{_libdir}/libpython%{LDVERSION_optimized}.a
+%{_libdir}/pkgconfig/python3.pc
 %{_libdir}/pkgconfig/python-%{LDVERSION_optimized}.pc
 %{_libdir}/pkgconfig/python-%{pybasever}.pc
 %exclude %{_rpmconfigdir}/macros.d/macros.pybytecompile%{pybasever}
 
+
+%{_bindir}/python3-2to3
 %{_bindir}/2to3-%{pybasever}
+%{_bindir}/idle3
 %{_bindir}/idle%{pybasever}
 
 # https://bugzilla.redhat.com/show_bug.cgi?id=1476593
@@ -1032,8 +1023,7 @@ CheckPython optimized
 
 %{_includedir}/python%{LDVERSION_debug}
 %{_bindir}/python%{LDVERSION_debug}-config
-%{_libdir}/libpython%{LDVERSION_debug}.so
-%{_libdir}/libpython%{LDVERSION_debug}.so.1.0
+%{_libdir}/libpython%{LDVERSION_debug}.a
 %{_libdir}/pkgconfig/python-%{LDVERSION_debug}.pc
 
 %endif # with_debug_build
@@ -1044,5 +1034,11 @@ CheckPython optimized
 # ======================================================
 
 %changelog
+* Wed Jan 10 2018 Daniele Viganò <daniele@openquake.org> - 3.5.4-3
+- Enable ensurepip
+
+* Tue Jan 09 2018 Daniele Viganò <daniele@openquake.org> - 3.5.4-2
+- Make python build statically linked
+
 * Mon Jan 08 2018 Daniele Viganò <daniele@openquake.org> - 3.5.4-1
 - First build based on python35-3.5.4-2.fc27.src
