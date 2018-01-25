@@ -5,6 +5,7 @@
 
 # Override default installation
 %define _prefix /opt/openquake
+# docdir must be outside our prefix
 %define _docdir /usr/share/doc
 
 %global pybasever 3.5
