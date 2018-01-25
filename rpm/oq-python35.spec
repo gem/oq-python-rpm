@@ -1028,7 +1028,7 @@ CheckPython optimized
 # https://bugzilla.redhat.com/show_bug.cgi?id=1476593
 %exclude /usr/lib/debug%{_libdir}/__pycache__/libpython%{pybasever}m.so.1.0.debug-gdb.cpython-%{pyshortver}.*py*
 %exclude /usr/lib/debug%{_libdir}/libpython%{pybasever}m.so.1.0.debug-gdb.py
-%exclude /usr/lib/debug%{_bindir}/python%{pybasever}m*
+%exclude /usr/lib/debug%{_bindir}/python%{pybasever}*
 
 %if 0%{?with_debug_build}
 %{_bindir}/python%{LDVERSION_debug}
