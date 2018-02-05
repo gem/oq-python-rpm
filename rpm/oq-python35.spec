@@ -5,6 +5,8 @@
 
 # Override default installation
 %define _prefix /opt/openquake
+# docdir must be outside our prefix
+%define _docdir /usr/share/doc
 
 %global pybasever 3.5
 
@@ -103,7 +105,7 @@
 Summary: Version 3.5 of the Python programming language for OpenQuake
 Name: oq-python%{pyshortver}
 Version: %{pybasever}.4
-Release: 3%{?dist}
+Release: 4%{?dist}
 License: Python
 Group: Development/Languages
 
@@ -162,6 +164,11 @@ BuildRequires: xz-devel
 BuildRequires: zlib-devel
 
 Requires:      expat >= 2.1.0
+
+%if 0%{?fedora} >= 26
+# Python 3 built with glibc >= 2.24.90-26 needs to require it (rhbz#1410644).
+Requires: glibc%{?_isa} >= 2.24.90-26
+%endif
 
 BuildRequires: python-rpm-macros
 
@@ -660,7 +667,7 @@ make install DESTDIR=%{buildroot} INSTALL="install -p" EXTRA_CFLAGS="$MoreCFlags
   # but doing so generated noise when ldconfig was rerun (rhbz:562980)
   #
 %if 0%{?with_gdb_hooks}
-  DirHoldingGdbPy=%{_prefix}/usr/lib/debug/%{_libdir}
+  DirHoldingGdbPy=/usr/lib/debug/%{_libdir}
   PathOfGdbPy=$DirHoldingGdbPy/$PyInstSoName.debug-gdb.py
 
   mkdir -p %{buildroot}$DirHoldingGdbPy
@@ -964,6 +971,15 @@ CheckPython optimized
 %doc LICENSE README
 %doc Misc/README.valgrind Misc/valgrind-python.supp Misc/gdbinit
 
+# In /opt/openquake we are the owners of bin, usr and so on
+%dir %{_prefix}
+%dir %{_bindir}
+%dir %{_libdir}
+%if "%{_lib}" == "lib64"
+%dir %{_prefix}/lib
+%endif
+%dir %{_includedir}
+%dir %{_datadir}
 
 %{_bindir}/pydoc3
 %{_bindir}/python3
@@ -976,7 +992,7 @@ CheckPython optimized
 %{_bindir}/pyvenv-%{pybasever}
 %{_bindir}/pip%{pybasever}
 %{_bindir}/easy_install-%{pybasever}
-%{_mandir}/*/*
+%{_mandir}
 
 %{pylibdir}/
 
@@ -998,10 +1014,10 @@ CheckPython optimized
 %{_bindir}/python%{LDVERSION_optimized}-config
 %{_bindir}/python%{LDVERSION_optimized}-*-config
 %{_libdir}/libpython%{LDVERSION_optimized}.a
+%dir %{_libdir}/pkgconfig
 %{_libdir}/pkgconfig/python3.pc
 %{_libdir}/pkgconfig/python-%{LDVERSION_optimized}.pc
 %{_libdir}/pkgconfig/python-%{pybasever}.pc
-%exclude %{_rpmconfigdir}/macros.d/macros.pybytecompile%{pybasever}
 
 
 %{_bindir}/python3-2to3
@@ -1010,8 +1026,9 @@ CheckPython optimized
 %{_bindir}/idle%{pybasever}
 
 # https://bugzilla.redhat.com/show_bug.cgi?id=1476593
-%exclude /opt/openquake/usr/lib/debug%{_libdir}/__pycache__/libpython%{pybasever}m.so.1.0.debug-gdb.cpython-%{pyshortver}.*py*
-%exclude /opt/openquake/usr/lib/debug%{_libdir}/libpython%{pybasever}m.so.1.0.debug-gdb.py
+%exclude /usr/lib/debug%{_libdir}/__pycache__/libpython%{pybasever}m.so.1.0.debug-gdb.cpython-%{pyshortver}.*py*
+%exclude /usr/lib/debug%{_libdir}/libpython%{pybasever}m.so.1.0.debug-gdb.py
+%exclude /usr/lib/debug%{_bindir}/python%{pybasever}*
 
 %if 0%{?with_debug_build}
 %{_bindir}/python%{LDVERSION_debug}
@@ -1034,6 +1051,9 @@ CheckPython optimized
 # ======================================================
 
 %changelog
+* Wed Jan 24 2018 Daniele Viganò <daniele@openquake.org> - 3.5.4-4
+- Make package compatible with Fedora
+
 * Wed Jan 10 2018 Daniele Viganò <daniele@openquake.org> - 3.5.4-3
 - Enable ensurepip
 
