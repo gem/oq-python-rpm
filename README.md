@@ -11,4 +11,5 @@ $ mock -r epel-7-x86_64 --old-chroot oq-python35-3.5.4-1.fc27.src.rpm
 ```
 
 Based on https://src.fedoraproject.org/rpms/python35
+
 Provides Python 3.5 in `/opt/openquake`
