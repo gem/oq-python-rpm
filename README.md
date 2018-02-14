@@ -1,7 +1,7 @@
 # oq-python-dist
-Python Linux packages for OpenQuake, currently supporting RHEL/CentOS 7
+Custom Python RPM packages for OpenQuake, supporting RHEL/CentOS 7 and Fedora.
 
-## RedHat
+## Build
 
 ```bash
 $ spectool -g -R oq-python35.spec
