@@ -1,5 +1,5 @@
 # oq-python-dist
-Custom Python RPM packages for OpenQuake, supporting RHEL/CentOS 7 and Fedora.
+Custom Python RPM packages for OpenQuake, supporting RHEL/CentOS 7 and Fedora. The corresponding Ubuntu package can be found at https://github.com/gem/oq-python-deb/.
 
 ## Build
 
