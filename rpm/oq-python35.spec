@@ -105,7 +105,7 @@
 Summary: Version 3.5 of the Python programming language for OpenQuake
 Name: oq-python%{pyshortver}
 Version: %{pybasever}.4
-Release: 4%{?dist}
+Release: 5%{?dist}
 License: Python
 Group: Development/Languages
 
@@ -961,6 +961,15 @@ CheckPython optimized
 # Scriptlets
 # ======================================================
 
+# Convert lib64 symlink into a real dir to avoid transaction conflicts during upgrades.
+# See: https://fedoraproject.org/wiki/Packaging:Directory_Replacement#Scriptlet_to_replace_a_symlink_to_a_directory_with_a_directory
+%pretrans -p <lua>
+path = "%{_libdir}"
+st = posix.stat(path)
+if st and st.type == "link" then
+  os.remove(path)
+end
+
 %post -p /sbin/ldconfig
 
 %postun -p /sbin/ldconfig
@@ -1051,6 +1060,9 @@ CheckPython optimized
 # ======================================================
 
 %changelog
+* Thu Feb 15 2018 Daniele Viganò <daniele@openquake.org> - 3.5.4-5
+- Improve migration path when upgrading from python2
+
 * Wed Jan 24 2018 Daniele Viganò <daniele@openquake.org> - 3.5.4-4
 - Make package compatible with Fedora
 
