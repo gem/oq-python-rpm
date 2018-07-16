@@ -1,7 +1,7 @@
-diff --git Include/object.h Include/object.h
-index 50d9747..9b7e89e 100644
---- Include/object.h
-+++ Include/object.h
+diff --git a/Include/object.h b/Include/object.h
+index 0c88603..e3413e8 100644
+--- a/Include/object.h
++++ b/Include/object.h
 @@ -1059,6 +1059,49 @@ PyAPI_FUNC(void)
  _PyObject_DebugTypeStats(FILE *out);
  #endif /* ifndef Py_LIMITED_API */
@@ -52,56 +52,16 @@ index 50d9747..9b7e89e 100644
  #ifdef __cplusplus
  }
  #endif
-diff --git Objects/object.c Objects/object.c
-index d21fd90..d07b49c 100644
---- Objects/object.c
-+++ Objects/object.c
-@@ -2034,6 +2034,35 @@ _PyTrash_thread_destroy_chain(void)
-     }
- }
- 
-+PyAPI_FUNC(void)
-+_PyObject_AssertFailed(PyObject *obj, const char *msg, const char *expr,
-+          const char *file, int line, const char *function)
-+{
-+    fprintf(stderr,
-+            "%s:%d: %s: Assertion \"%s\" failed.\n",
-+            file, line, function, expr);
-+    if (msg) {
-+        fprintf(stderr, "%s\n", msg);
-+    }
-+
-+    fflush(stderr);
-+
-+    if (obj) {
-+        /* This might succeed or fail, but we're about to abort, so at least
-+           try to provide any extra info we can: */
-+        _PyObject_Dump(obj);
-+    }
-+    else {
-+        fprintf(stderr, "NULL object\n");
-+    }
-+
-+    fflush(stdout);
-+    fflush(stderr);
-+
-+    /* Terminate the process: */
-+    abort();
-+}
-+
- #ifndef Py_TRACE_REFS
- /* For Py_LIMITED_API, we need an out-of-line version of _Py_Dealloc.
-    Define this here, so we can undefine the macro. */
-diff --git Lib/test/test_gc.py Lib/test/test_gc.py
-index a4d684b..e77029e 100644
---- Lib/test/test_gc.py
-+++ Lib/test/test_gc.py
+diff --git a/Lib/test/test_gc.py b/Lib/test/test_gc.py
+index e727499..6efcafb 100644
+--- a/Lib/test/test_gc.py
++++ b/Lib/test/test_gc.py
 @@ -1,10 +1,11 @@
  import unittest
  from test.support import (verbose, refcount_test, run_unittest,
                            strip_python_stderr, cpython_only, start_threads,
 -                          temp_dir, requires_type_collecting)
-+                          temp_dir, requires_type_collecting, import_module)
++                          temp_dir, import_module, requires_type_collecting)
  from test.support.script_helper import assert_python_ok, make_script
  
  import sys
@@ -118,7 +78,7 @@ index a4d684b..e77029e 100644
  @with_tp_del
  class Uncollectable(object):
      """Create a reference cycle with multiple __del__ methods.
-@@ -864,6 +867,50 @@ class GCCallbackTests(unittest.TestCase):
+@@ -862,6 +865,50 @@ class GCCallbackTests(unittest.TestCase):
          self.assertEqual(len(gc.garbage), 0)
  
  
@@ -169,10 +129,10 @@ index a4d684b..e77029e 100644
  class GCTogglingTests(unittest.TestCase):
      def setUp(self):
          gc.enable()
-diff --git Modules/gcmodule.c Modules/gcmodule.c
-index cb7222d..6a9be80 100644
---- Modules/gcmodule.c
-+++ Modules/gcmodule.c
+diff --git a/Modules/gcmodule.c b/Modules/gcmodule.c
+index 0c6f444..87edd5a 100644
+--- a/Modules/gcmodule.c
++++ b/Modules/gcmodule.c
 @@ -341,7 +341,8 @@ update_refs(PyGC_Head *containers)
  {
      PyGC_Head *gc = containers->gc.gc_next;
@@ -308,3 +268,43 @@ index cb7222d..6a9be80 100644
          if (_PyGCHead_REFS(gc) != 0)
              return -1;
      }
+diff --git a/Objects/object.c b/Objects/object.c
+index 559794f..a47d47f 100644
+--- a/Objects/object.c
++++ b/Objects/object.c
+@@ -2022,6 +2022,35 @@ _PyTrash_thread_destroy_chain(void)
+     }
+ }
+ 
++PyAPI_FUNC(void)
++_PyObject_AssertFailed(PyObject *obj, const char *msg, const char *expr,
++              const char *file, int line, const char *function)
++{
++    fprintf(stderr,
++            "%s:%d: %s: Assertion \"%s\" failed.\n",
++            file, line, function, expr);
++    if (msg) {
++        fprintf(stderr, "%s\n", msg);
++    }
++
++    fflush(stderr);
++
++    if (obj) {
++        /* This might succeed or fail, but we're about to abort, so at least
++           try to provide any extra info we can: */
++        _PyObject_Dump(obj);
++    }
++    else {
++        fprintf(stderr, "NULL object\n");
++    }
++
++    fflush(stdout);
++    fflush(stderr);
++
++    /* Terminate the process: */
++    abort();
++}
++
+ #ifndef Py_TRACE_REFS
+ /* For Py_LIMITED_API, we need an out-of-line version of _Py_Dealloc.
+    Define this here, so we can undefine the macro. */
