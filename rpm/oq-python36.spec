@@ -1,3 +1,8 @@
+# Override default installation
+%define _prefix /opt/openquake
+# docdir must be outside our prefix
+%define _docdir /usr/share/doc
+
 # ==================
 # Top-level metadata
 # ==================
@@ -7,14 +12,14 @@
 # pybasever without the dot:
 %global pyshortver 36
 
-Name: python%{pyshortver}
-Summary: Version %{pybasever} of the Python interpreter
+Name: oq-python%{pyshortver}
+Summary: Version %{pybasever} of the Python interpreter for OpenQuake
 URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
 Version: %{pybasever}.6
-Release: 2%{?dist}
+Release: 1%{?dist}
 License: Python
 
 
@@ -45,38 +50,8 @@ License: Python
 # Run the test suite in %%check
 %bcond_without tests
 
-# Ability to reuse RPM-installed pip using rewheel
-%if %{with flatpackage}
-%bcond_with rewheel
-%else
-%bcond_without rewheel
-%endif
-
-# Extra build for debugging the interpreter or C-API extensions
-# (the -debug subpackages)
-%if %{with flatpackage}
-%bcond_with debug_build
-%else
-%bcond_without debug_build
-%endif
-
-# Support for the GDB debugger
-%bcond_without gdb_hooks
-
-# The dbm.gnu module (key-value database)
-%bcond_without gdbm
-
 # Main interpreter loop optimization
 %bcond_without computed_gotos
-
-# Support for the Valgrind debugger/profiler
-%ifnarch s390 %{mips} riscv64
-%bcond_without valgrind
-%else
-# Some arches don't have valgrind, disable support for it there.
-%bcond_with valgrind
-%endif
-
 
 # ==================================
 # Notes from bootstraping Python 3.6
@@ -124,13 +99,10 @@ License: Python
 # ABIFLAGS, LDVERSION and SOABI are in the upstream configure.ac
 # See PEP 3149 for some background: http://www.python.org/dev/peps/pep-3149/
 %global ABIFLAGS_optimized m
-%global ABIFLAGS_debug     dm
 
 %global LDVERSION_optimized %{pybasever}%{ABIFLAGS_optimized}
-%global LDVERSION_debug     %{pybasever}%{ABIFLAGS_debug}
 
 %global SOABI_optimized cpython-%{pyshortver}%{ABIFLAGS_optimized}-%{_arch}-linux%{_gnu}
-%global SOABI_debug     cpython-%{pyshortver}%{ABIFLAGS_debug}-%{_arch}-linux%{_gnu}
 
 # All bytecode files are in a __pycache__ subdirectory, with a name
 # reflecting the version of the bytecode.
@@ -152,7 +124,6 @@ License: Python
 # and halt the build)
 %global py_SOVERSION 1.0
 %global py_INSTSONAME_optimized libpython%{LDVERSION_optimized}.so.%{py_SOVERSION}
-%global py_INSTSONAME_debug     libpython%{LDVERSION_debug}.so.%{py_SOVERSION}
 
 # Disable automatic bytecompilation. The python3 binary is not yet be
 # available in /usr/bin when Python is built. Also, the bytecompilation fails
@@ -185,9 +156,6 @@ BuildRequires: expat-devel
 
 BuildRequires: findutils
 BuildRequires: gcc-c++
-%if %{with gdbm}
-BuildRequires: gdbm-devel >= 1:1.13
-%endif
 BuildRequires: glibc-devel
 BuildRequires: gmp-devel
 BuildRequires: libappstream-glib
@@ -209,10 +177,6 @@ BuildRequires: tcl-devel
 BuildRequires: tix-devel
 BuildRequires: tk-devel
 
-%if %{with valgrind}
-BuildRequires: valgrind-devel
-%endif
-
 BuildRequires: xz-devel
 BuildRequires: zlib-devel
 
@@ -220,11 +184,6 @@ BuildRequires: /usr/bin/dtrace
 
 # workaround http://bugs.python.org/issue19804 (test_uuid requires ifconfig)
 BuildRequires: /usr/sbin/ifconfig
-
-%if %{with rewheel}
-BuildRequires: python3-setuptools
-BuildRequires: python3-pip
-%endif
 
 
 # =======================
@@ -254,13 +213,6 @@ Patch1:         00001-rpath.patch
 # Only used when "%%{_lib}" == "lib64"
 # Not yet sent upstream.
 Patch102: 00102-lib64.patch
-
-# 00111 #
-# Patch the Makefile.pre.in so that the generated Makefile doesn't try to build
-# a libpythonMAJOR.MINOR.a
-# See https://bugzilla.redhat.com/show_bug.cgi?id=556092
-# Downstream only: not appropriate for upstream
-Patch111: 00111-no-static-lib.patch
 
 # 00132 #
 # Add non-standard hooks to unittest for use in the "check" phase below, when
@@ -313,12 +265,6 @@ Patch170: 00170-gc-assertions.patch
 # Does not affect python2 AFAICS (different sysconfig values initialization)
 Patch178: 00178-dont-duplicate-flags-in-sysconfig.patch
 
-# 00189 #
-# Add the rewheel module, allowing to recreate wheels from already installed
-# ones
-# https://github.com/bkabrda/rewheel
-Patch189: 00189-add-rewheel-module.patch
-
 # 00205 #
 # LIBPL variable in makefile takes LIBPL from configure.ac
 # but the LIBPL variable defined there doesn't respect libdir macro
@@ -370,243 +316,6 @@ Patch294: 00294-define-TLS-cipher-suite-on-build-time.patch
 # Descriptions, and metadata for subpackages
 # ==========================================
 
-%if %{without flatpackage}
-
-# Packages with Python modules in standard locations automatically
-# depend on python(abi). Provide that here.
-Provides: python(abi) = %{pybasever}
-
-# For backward compatibility only, remove in F29:
-Provides: system-python(abi) = %{pybasever}
-Provides: system-python = %{version}-%{release}
-Provides: system-python%{?_isa} = %{version}-%{release}
-Obsoletes: system-python < %{version}-%{release}
-
-Requires: %{name}-libs%{?_isa} = %{version}-%{release}
-
-# In order to support multiple Python interpreters for development purposes,
-# packages with the naming scheme flatpackage (e.g. python35) exist for
-# non-default versions of Python 3.
-# For consistency, and to keep the upgrade path clean, we Provide/Obsolete
-# these names here.
-Provides: python%{pyshortver} = %{version}-%{release}
-# Note that using Obsoletes without package version is not standard practice.
-# Here we assert that *any* version of the system's default interpreter is
-# preferable to an "extra" interpreter. For example, python3-3.6.1 will
-# replace python36-3.6.2.
-Obsoletes: python%{pyshortver}
-
-# Shall be removed in Fedora 31
-# The release is bumped to 20, so we can do f27 platform-python updates
-# If the release in f27 ever goes >= 20, raise it here
-# If platform-python is ever reintroduced, make it higher version than this:
-%global platpyver 3.6.2-20
-Obsoletes: platform-python < %{platpyver}
-
-%if %{with rewheel}
-Requires: python3-setuptools
-Requires: python3-pip
-%endif
-
-# This prevents ALL subpackages built from this spec to require
-# /usr/bin/python3*. Granularity per subpackage is impossible.
-# It's intended for the libs package not to drag in the interpreter, see
-# https://bugzilla.redhat.com/show_bug.cgi?id=1547131
-# All others require %%{name} anyway.
-%global __requires_exclude ^/usr/bin/python3
-
-
-# The description used both for the SRPM and the main `python3` subpackage:
-%description
-Python is an accessible, high-level, dynamically typed, interpreted programming
-language, designed with an emphasis on code readability.
-It includes an extensive standard library, and has a vast ecosystem of
-third-party libraries.
-
-The %{name} package provides the "python3" executable: the reference
-interpreter for the Python language, version 3.
-The majority of its standard library is provided in the %{name}-libs package,
-which should be installed automatically along with %{name}.
-The remaining parts of the Python standard library are broken out into the
-%{name}-tkinter and %{name}-test packages, which may need to be installed
-separately.
-
-Documentation for Python is provided in the %{name}-docs package.
-
-Packages containing additional libraries for Python are generally named with
-the "%{name}-" prefix.
-
-
-%package libs
-Summary:        Python runtime libraries
-
-# The "enum" module is included in the standard library.
-# Provide an upgrade path from the external library.
-Provides: python3-enum34 = 1.0.4-5%{?dist}
-Obsoletes: python3-enum34 < 1.0.4-5%{?dist}
-
-# Python 3 built with glibc >= 2.24.90-26 needs to require it
-# See https://bugzilla.redhat.com/show_bug.cgi?id=1410644
-Requires: glibc%{?_isa} >= 2.24.90-26
-
-%if %{with gdbm}
-# When built with this (as guarded by the BuildRequires above), require it
-Requires: gdbm%{?_isa} >= 1:1.13
-%endif
-
-# There are files in the standard library that have python shebang.
-# We've filtered the automatic requirement out so libs are installable without
-# the main package. This however makes it pulled in by default.
-# See https://bugzilla.redhat.com/show_bug.cgi?id=1547131
-Recommends: %{name}%{?_isa} = %{version}-%{release}
-
-# For backward compatibility only, remove in F29:
-Provides: system-python-libs = %{version}-%{release}
-Provides: system-python-libs%{?_isa} = %{version}-%{release}
-Obsoletes: system-python-libs < %{version}-%{release}
-
-# Shall be removed in Fedora 31
-Obsoletes: platform-python-libs < %{platpyver}
-Obsoletes: platform-python-libs-devel < %{platpyver}
-
-%description libs
-This package contains runtime libraries for use by Python:
-- the majority of the Python standard library
-- a dynamically linked library for use by applications that embed Python as
-  a scripting language, and by the main "python3" executable
-
-
-%package devel
-Summary: Libraries and header files needed for Python development
-Requires: %{name} = %{version}-%{release}
-Requires: %{name}-libs%{?_isa} = %{version}-%{release}
-BuildRequires: python-rpm-macros
-Requires: python-rpm-macros
-Requires: python3-rpm-macros
-Requires: python3-rpm-generators
-
-# https://bugzilla.redhat.com/show_bug.cgi?id=1217376
-# https://bugzilla.redhat.com/show_bug.cgi?id=1496757
-# https://bugzilla.redhat.com/show_bug.cgi?id=1218294
-# TODO change to a specific subpackage once available (#1218294)
-Requires: redhat-rpm-config
-
-Provides: %{name}-2to3 = %{version}-%{release}
-Provides: 2to3 = %{version}-%{release}
-
-Conflicts: %{name} < %{version}-%{release}
-
-# https://bugzilla.redhat.com/show_bug.cgi?id=1111275
-# /usr/bin/2to3 was moved from python2-tools to python3-tools
-# TODO Remove in Fedora 29
-Conflicts: python2-tools < 2.7.13-17
-Conflicts: python-tools < 2.7.13-17
-# https://bugzilla.redhat.com/show_bug.cgi?id=1312030
-# /usr/bin/2to3 was moved from python3-tools to python3-devel
-# TODO Remove in Fedora 30
-Conflicts: python3-tools < 3.6.4-14
-
-# Shall be removed in Fedora 31
-Obsoletes: platform-python-devel < %{platpyver}
-
-%description devel
-This package contains the header files and configuration needed to compile
-Python extension modules (typically written in C or C++), to embed Python
-into other programs, and to make binary distributions for Python libraries.
-
-It also contains the necessary macros to build RPM packages with Python modules
-and 2to3 tool, an automatic source converter from Python 2.X.
-
-
-%package idle
-Summary: A basic graphical development environment for Python
-Requires: %{name} = %{version}-%{release}
-Requires: %{name}-tkinter = %{version}-%{release}
-
-Provides: idle3 = %{version}-%{release}
-
-Provides: %{name}-tools = %{version}-%{release}
-Provides: %{name}-tools%{?_isa} = %{version}-%{release}
-Obsoletes: %{name}-tools < %{version}-%{release}
-
-# Shall be removed in Fedora 31
-Obsoletes: platform-python-tools < %{platpyver}
-
-%description idle
-IDLE is Python’s Integrated Development and Learning Environment.
-
-IDLE has the following features: Python shell window (interactive
-interpreter) with colorizing of code input, output, and error messages;
-multi-window text editor with multiple undo, Python colorizing,
-smart indent, call tips, auto completion, and other features;
-search within any window, replace within editor windows, and
-search through multiple files (grep); debugger with persistent
-breakpoints, stepping, and viewing of global and local namespaces;
-configuration, browsers, and other dialogs.
-
-
-%package tkinter
-Summary: A GUI toolkit for Python
-Requires: %{name} = %{version}-%{release}
-
-# Shall be removed in Fedora 31
-Obsoletes: platform-python-tkinter < %{platpyver}
-
-%description tkinter
-The Tkinter (Tk interface) library is a graphical user interface toolkit for
-the Python programming language.
-
-
-%package test
-Summary: The self-test suite for the main python3 package
-Requires: %{name} = %{version}-%{release}
-
-# Shall be removed in Fedora 31
-Obsoletes: platform-python-test < %{platpyver}
-
-%description test
-The self-test suite for the Python interpreter.
-
-This is only useful to test Python itself. For testing general Python code,
-you should use the unittest module from %{name}-libs, or a library such as
-%{name}-pytest or %{name}-nose.
-
-
-%if %{with debug_build}
-%package debug
-Summary: Debug version of the Python runtime
-
-# The debug build is an all-in-one package version of the regular build, and
-# shares the same .py/.pyc files and directories as the regular build. Hence
-# we depend on all of the subpackages of the regular build:
-Requires: %{name}%{?_isa} = %{version}-%{release}
-Requires: %{name}-libs%{?_isa} = %{version}-%{release}
-Requires: %{name}-devel%{?_isa} = %{version}-%{release}
-Requires: %{name}-test%{?_isa} = %{version}-%{release}
-Requires: %{name}-tkinter%{?_isa} = %{version}-%{release}
-Requires: %{name}-idle%{?_isa} = %{version}-%{release}
-
-%description debug
-python3-debug provides a version of the Python runtime with numerous debugging
-features enabled, aimed at advanced Python users such as developers of Python
-extension modules.
-
-This version uses more memory and will be slower than the regular Python build,
-but is useful for tracking down reference-counting issues and other bugs.
-
-The bytecode format is unchanged, so that .pyc files are compatible between
-this and the standard version of Python, but the debugging features mean that
-C/C++ extension modules are ABI-incompatible and must be built for each version
-separately.
-
-The debug build shares installation directories with the standard Python
-runtime, so that .py and .pyc files can be shared.
-Compiled extension modules use a special ABI flag ("d") in the filename,
-so extensions for both versions can co-exist in the same directory.
-%endif # with debug_build
-
-%else  # with flatpackage
-
 Requires: redhat-rpm-config
 
 # We'll not provide this, on purpose
@@ -614,21 +323,7 @@ Requires: redhat-rpm-config
 %global __requires_exclude ^python\\(abi\\) = 3\\..$
 %global __provides_exclude ^python\\(abi\\) = 3\\..$
 
-# We keep those inside on purpose
-Provides: bundled(python3-pip) = 10.0.1
-Provides: bundled(python3-setuptools) = 39.0.1
-
-# The description for the flat package
-%description
-Python %{pybasever} package for developers.
-
-This package exists to allow developers to test their code against an older
-version of Python. This is not a full Python stack and if you wish to run
-your applications with Python %{pybasever}, see other distributions
-that support it, such as CentOS or RHEL with Software Collections
-or older Fedora releases.
-
-%endif # with flatpackage
+Provides: oq-python3
 
 # ======================================================
 # The prep phase of the build:
@@ -641,11 +336,6 @@ or older Fedora releases.
 rm -r Modules/expat
 rm -r Modules/zlib
 
-%if %{with rewheel}
-%global pip_version %(pip3 --version | cut -d' ' -f2)
-sed -r -i s/'_PIP_VERSION = "[0-9.]+"'/'_PIP_VERSION = "%{pip_version}"'/ Lib/ensurepip/__init__.py
-%endif
-
 #
 # Apply patches:
 #
@@ -654,17 +344,12 @@ sed -r -i s/'_PIP_VERSION = "[0-9.]+"'/'_PIP_VERSION = "%{pip_version}"'/ Lib/en
 %if "%{_lib}" == "lib64"
 %patch102 -p1
 %endif
-%patch111 -p1
 %patch132 -p1
 %patch155 -p1
 %patch160 -p1
 %patch163 -p1
 %patch170 -p1
 %patch178 -p1
-
-%if %{with rewheel}
-%patch189 -p1
-%endif
 
 %patch205 -p1
 %patch251 -p1
@@ -735,18 +420,13 @@ BuildPython() {
 
 %configure \
   --enable-ipv6 \
-  --enable-shared \
   --with-computed-gotos=%{computed_gotos_flag} \
-  --with-dbmliborder=gdbm:ndbm:bdb \
   --with-system-expat \
   --with-system-ffi \
   --enable-loadable-sqlite-extensions \
   --with-dtrace \
   --with-lto \
   --with-ssl-default-suites=openssl \
-%if %{with valgrind}
-  --with-valgrind \
-%endif
   $ExtraConfigArgs \
   %{nil}
 
@@ -759,14 +439,8 @@ BuildPython() {
 
 # Call the above to build each configuration.
 
-%if %{with debug_build}
-BuildPython debug \
-  "--without-ensurepip --with-pydebug" \
-  "-O0"
-%endif # with debug_build
-
 BuildPython optimized \
-  "--without-ensurepip %{optimizations_flag}" \
+  "--with-ensurepip %{optimizations_flag}" \
   ""
 
 # ======================================================
@@ -777,30 +451,6 @@ BuildPython optimized \
 
 # As in %%build, remember the current directory
 topdir=$(pwd)
-
-# We install a collection of hooks for gdb that make it easier to debug
-# executables linked against libpython3* (such as /usr/bin/python3 itself)
-#
-# These hooks are implemented in Python itself (though they are for the version
-# of python that gdb is linked with)
-#
-# gdb-archer looks for them in the same path as the ELF file or its .debug
-# file, with a -gdb.py suffix.
-# We put them next to the debug file, because ldconfig would complain if
-# it found non-library files directly in /usr/lib/
-# (see https://bugzilla.redhat.com/show_bug.cgi?id=562980)
-#
-# We'll put these files in the debuginfo package by installing them to e.g.:
-#  /usr/lib/debug/usr/lib/libpython3.2.so.1.0.debug-gdb.py
-# (note that the debug path is /usr/lib/debug for both 32/64 bit)
-#
-# See https://fedoraproject.org/wiki/Features/EasierPythonDebugging for more
-# information
-
-%if %{with gdb_hooks}
-DirHoldingGdbPy=%{_prefix}/lib/debug/%{_libdir}
-mkdir -p %{buildroot}$DirHoldingGdbPy
-%endif # with gdb_hooks
 
 # Multilib support for pyconfig.h
 # 32- and 64-bit versions of pyconfig.h are different. For multilib support
@@ -835,12 +485,6 @@ InstallPython() {
 
   popd
 
-%if %{with gdb_hooks}
-  # See comment on $DirHoldingGdbPy above
-  PathOfGdbPy=$DirHoldingGdbPy/$PyInstSoName-%{version}-%{release}.%{_arch}.debug-gdb.py
-  cp Tools/gdb/libpython.py %{buildroot}$PathOfGdbPy
-%endif # with gdb_hooks
-
   # Rename the -devel script that differs on different arches to arch specific name
   mv %{buildroot}%{_bindir}/python${LDVersion}-{,`uname -m`-}config
   echo -e '#!/bin/sh\nexec `dirname $0`/python'${LDVersion}'-`uname -m`-config "$@"' > \
@@ -867,15 +511,6 @@ EOF
   echo FINISHED: INSTALL OF PYTHON FOR CONFIGURATION: $ConfName
 }
 
-# Install the "debug" build first; any common files will be overridden with
-# later builds
-%if %{with debug_build}
-InstallPython debug \
-  %{py_INSTSONAME_debug} \
-  -O0 \
-  %{LDVERSION_debug}
-%endif # with debug_build
-
 # Now the optimized build:
 InstallPython optimized \
   %{py_INSTSONAME_optimized} \
@@ -891,19 +526,6 @@ install -d -m 0755 %{buildroot}%{pylibdir}/site-packages/__pycache__
 # Note that rpmlint will complain about hardcoded library path;
 # this is intentional.
 install -d -m 0755 %{buildroot}%{_prefix}/lib/python%{pybasever}/site-packages/__pycache__
-%endif
-
-%if %{without flatpackage}
-# add idle3 to menu
-install -D -m 0644 Lib/idlelib/Icons/idle_16.png %{buildroot}%{_datadir}/icons/hicolor/16x16/apps/idle3.png
-install -D -m 0644 Lib/idlelib/Icons/idle_32.png %{buildroot}%{_datadir}/icons/hicolor/32x32/apps/idle3.png
-install -D -m 0644 Lib/idlelib/Icons/idle_48.png %{buildroot}%{_datadir}/icons/hicolor/48x48/apps/idle3.png
-desktop-file-install --dir=%{buildroot}%{_datadir}/applications %{SOURCE10}
-
-# Install and validate appdata file
-mkdir -p %{buildroot}%{_metainfodir}
-cp -a %{SOURCE11} %{buildroot}%{_metainfodir}
-appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/idle3.appdata.xml
 %endif
 
 # Make sure distutils looks at the right pyconfig.h file
@@ -967,36 +589,6 @@ rm -rf %{buildroot}%{_bindir}/__pycache__
 # Fixup permissions for shared libraries from non-standard 555 to standard 755:
 find %{buildroot} -perm 555 -exec chmod 755 {} \;
 
-# Create "/usr/bin/python3-debug", a symlink to the python3 debug binary, to
-# avoid the user having to know the precise version and ABI flags.
-# See e.g. https://bugzilla.redhat.com/show_bug.cgi?id=676748
-%if %{with debug_build} && %{without flatpackage}
-ln -s \
-  %{_bindir}/python%{LDVERSION_debug} \
-  %{buildroot}%{_bindir}/python3-debug
-%endif
-
-# System Python: Link the executable to libexec
-# This is for backwards compatibility only and should be removed in Fedora 29
-%if %{without flatpackage}
-mkdir -p %{buildroot}%{_libexecdir}
-ln -s %{_bindir}/python%{pybasever} %{buildroot}%{_libexecdir}/system-python
-%endif
-
-%if %{with flatpackage}
-# Remove stuff that would conflict with python3 package
-rm %{buildroot}%{_bindir}/python3
-rm %{buildroot}%{_bindir}/pydoc3
-rm %{buildroot}%{_bindir}/pathfix.py
-rm %{buildroot}%{_bindir}/idle3
-rm %{buildroot}%{_bindir}/python3-*
-rm %{buildroot}%{_bindir}/pyvenv
-rm %{buildroot}%{_bindir}/2to3*
-rm %{buildroot}%{_libdir}/libpython3.so
-rm %{buildroot}%{_mandir}/man1/python3.1*
-rm %{buildroot}%{_libdir}/pkgconfig/python3.pc
-%endif
-
 # ======================================================
 # Checks for packaging issues
 # ======================================================
@@ -1015,22 +607,6 @@ find %{buildroot} -type f -a -name "*.py" -print0 | \
 ldd %{buildroot}/%{dynload_dir}/_curses*.so \
     | grep curses \
     | grep libncurses.so && (echo "_curses.so linked against libncurses.so" ; exit 1)
-
-# Ensure that the debug modules are linked against the debug libpython, and
-# likewise for the optimized modules and libpython:
-for Module in %{buildroot}/%{dynload_dir}/*.so ; do
-    case $Module in
-    *.%{SOABI_debug})
-        ldd $Module | grep %{py_INSTSONAME_optimized} &&
-            (echo Debug module $Module linked against optimized %{py_INSTSONAME_optimized} ; exit 1)
-
-        ;;
-    *.%{SOABI_optimized})
-        ldd $Module | grep %{py_INSTSONAME_debug} &&
-            (echo Optimized module $Module linked against debug %{py_INSTSONAME_debug} ; exit 1)
-        ;;
-    esac
-done
 
 # ======================================================
 # Running the upstream test suite
@@ -1057,7 +633,6 @@ CheckPython() {
     -wW --slowest --findleaks \
     -x test_distutils \
     -x test_bdist_rpm \
-    -x test_gdb \
     %ifarch ppc64le aarch64
     -x test_faulthandler \
     %endif
@@ -1075,480 +650,80 @@ CheckPython() {
 %if %{with tests}
 
 # Check each of the configurations:
-%if %{with debug_build}
-CheckPython debug
-%endif # with debug_build
 CheckPython optimized
 
 %endif # with tests
 
 
+# ======================================================
+# Scriptlets
+# ======================================================
+
+# Convert lib64 symlink into a real dir to avoid transaction conflicts during upgrades.
+# See: https://fedoraproject.org/wiki/Packaging:Directory_Replacement#Scriptlet_to_replace_a_symlink_to_a_directory_with_a_directory
+%pretrans -p <lua>
+path = "%{_libdir}"
+st = posix.stat(path)
+if st and st.type == "link" then
+  os.remove(path)
+end
+
 %files
 %license LICENSE
 %doc README.rst
 
-%if %{without flatpackage}
-%{_bindir}/pydoc*
+# In /opt/openquake we are the owners of bin, usr and so on
+%dir %{_prefix}
+%dir %{_bindir}
+%dir %{_libdir}
+%if "%{_lib}" == "lib64"
+%dir %{_prefix}/lib
+%endif
+%dir %{_includedir}
+%dir %{_datadir}
+
+%{_bindir}/pydoc3
 %{_bindir}/python3
 %{_bindir}/pyvenv
-%{_mandir}/*/*
-%{_bindir}/pyvenv
-# Remove in Fedora 29:
-%{_libexecdir}/system-python
-%else
+%{_bindir}/pip3
+
 %{_bindir}/pydoc%{pybasever}
-%{_mandir}/*/python%{pybasever}*
-%endif
-%{_bindir}/pyvenv-%{pybasever}
 %{_bindir}/python%{pybasever}
 %{_bindir}/python%{pybasever}m
+%{_bindir}/pyvenv-%{pybasever}
+%{_bindir}/pip%{pybasever}
+%{_bindir}/easy_install-%{pybasever}
+%{_mandir}
 
-%if %{without flatpackage}
-%files libs
-%license LICENSE
-%doc README.rst
-%endif
-
-%dir %{pylibdir}
-%dir %{dynload_dir}
-
-%{pylibdir}/lib2to3
-%if %{without flatpackage}
-%exclude %{pylibdir}/lib2to3/tests
-%endif
-
-%dir %{pylibdir}/unittest/
-%dir %{pylibdir}/unittest/__pycache__/
-%{pylibdir}/unittest/*.py
-%{pylibdir}/unittest/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/asyncio/
-%dir %{pylibdir}/asyncio/__pycache__/
-%{pylibdir}/asyncio/*.py
-%{pylibdir}/asyncio/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/venv/
-%dir %{pylibdir}/venv/__pycache__/
-%{pylibdir}/venv/*.py
-%{pylibdir}/venv/__pycache__/*%{bytecode_suffixes}
-%{pylibdir}/venv/scripts
-
-%{pylibdir}/wsgiref
-%{pylibdir}/xmlrpc
-
-%dir %{pylibdir}/ensurepip/
-%dir %{pylibdir}/ensurepip/__pycache__/
-%{pylibdir}/ensurepip/*.py
-%{pylibdir}/ensurepip/__pycache__/*%{bytecode_suffixes}
-
-%if %{without flatpackage}
-%exclude %{pylibdir}/ensurepip/_bundled
-%else
-%dir %{pylibdir}/ensurepip/_bundled
-%{pylibdir}/ensurepip/_bundled/*.whl
-%endif
-
-%if %{with rewheel}
-%dir %{pylibdir}/ensurepip/rewheel/
-%dir %{pylibdir}/ensurepip/rewheel/__pycache__/
-%{pylibdir}/ensurepip/rewheel/*.py
-%{pylibdir}/ensurepip/rewheel/__pycache__/*%{bytecode_suffixes}
-%endif
-
-%dir %{pylibdir}/test/
-%dir %{pylibdir}/test/__pycache__/
-%dir %{pylibdir}/test/support/
-%dir %{pylibdir}/test/support/__pycache__/
-%{pylibdir}/test/__init__.py
-%{pylibdir}/test/__pycache__/__init__%{bytecode_suffixes}
-%{pylibdir}/test/support/__init__.py
-%{pylibdir}/test/support/__pycache__/__init__%{bytecode_suffixes}
-
-%dir %{pylibdir}/concurrent/
-%dir %{pylibdir}/concurrent/__pycache__/
-%{pylibdir}/concurrent/*.py
-%{pylibdir}/concurrent/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/concurrent/futures/
-%dir %{pylibdir}/concurrent/futures/__pycache__/
-%{pylibdir}/concurrent/futures/*.py
-%{pylibdir}/concurrent/futures/__pycache__/*%{bytecode_suffixes}
-
-%{pylibdir}/pydoc_data
-
-%{dynload_dir}/_blake2.%{SOABI_optimized}.so
-%{dynload_dir}/_md5.%{SOABI_optimized}.so
-%{dynload_dir}/_sha1.%{SOABI_optimized}.so
-%{dynload_dir}/_sha256.%{SOABI_optimized}.so
-%{dynload_dir}/_sha3.%{SOABI_optimized}.so
-%{dynload_dir}/_sha512.%{SOABI_optimized}.so
-
-%{dynload_dir}/_asyncio.%{SOABI_optimized}.so
-%{dynload_dir}/_bisect.%{SOABI_optimized}.so
-%{dynload_dir}/_bz2.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_cn.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_hk.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_iso2022.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_jp.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_kr.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_tw.%{SOABI_optimized}.so
-%{dynload_dir}/_crypt.%{SOABI_optimized}.so
-%{dynload_dir}/_csv.%{SOABI_optimized}.so
-%{dynload_dir}/_ctypes.%{SOABI_optimized}.so
-%{dynload_dir}/_curses.%{SOABI_optimized}.so
-%{dynload_dir}/_curses_panel.%{SOABI_optimized}.so
-%{dynload_dir}/_dbm.%{SOABI_optimized}.so
-%{dynload_dir}/_decimal.%{SOABI_optimized}.so
-%{dynload_dir}/_elementtree.%{SOABI_optimized}.so
-%if %{with gdbm}
-%{dynload_dir}/_gdbm.%{SOABI_optimized}.so
-%endif
-%{dynload_dir}/_hashlib.%{SOABI_optimized}.so
-%{dynload_dir}/_heapq.%{SOABI_optimized}.so
-%{dynload_dir}/_json.%{SOABI_optimized}.so
-%{dynload_dir}/_lsprof.%{SOABI_optimized}.so
-%{dynload_dir}/_lzma.%{SOABI_optimized}.so
-%{dynload_dir}/_multibytecodec.%{SOABI_optimized}.so
-%{dynload_dir}/_multiprocessing.%{SOABI_optimized}.so
-%{dynload_dir}/_opcode.%{SOABI_optimized}.so
-%{dynload_dir}/_pickle.%{SOABI_optimized}.so
-%{dynload_dir}/_posixsubprocess.%{SOABI_optimized}.so
-%{dynload_dir}/_random.%{SOABI_optimized}.so
-%{dynload_dir}/_socket.%{SOABI_optimized}.so
-%{dynload_dir}/_sqlite3.%{SOABI_optimized}.so
-%{dynload_dir}/_ssl.%{SOABI_optimized}.so
-%{dynload_dir}/_struct.%{SOABI_optimized}.so
-%{dynload_dir}/array.%{SOABI_optimized}.so
-%{dynload_dir}/audioop.%{SOABI_optimized}.so
-%{dynload_dir}/binascii.%{SOABI_optimized}.so
-%{dynload_dir}/cmath.%{SOABI_optimized}.so
-%{dynload_dir}/_datetime.%{SOABI_optimized}.so
-%{dynload_dir}/fcntl.%{SOABI_optimized}.so
-%{dynload_dir}/grp.%{SOABI_optimized}.so
-%{dynload_dir}/math.%{SOABI_optimized}.so
-%{dynload_dir}/mmap.%{SOABI_optimized}.so
-%{dynload_dir}/nis.%{SOABI_optimized}.so
-%{dynload_dir}/ossaudiodev.%{SOABI_optimized}.so
-%{dynload_dir}/parser.%{SOABI_optimized}.so
-%{dynload_dir}/pyexpat.%{SOABI_optimized}.so
-%{dynload_dir}/readline.%{SOABI_optimized}.so
-%{dynload_dir}/resource.%{SOABI_optimized}.so
-%{dynload_dir}/select.%{SOABI_optimized}.so
-%{dynload_dir}/spwd.%{SOABI_optimized}.so
-%{dynload_dir}/syslog.%{SOABI_optimized}.so
-%{dynload_dir}/termios.%{SOABI_optimized}.so
-%{dynload_dir}/_testmultiphase.%{SOABI_optimized}.so
-%{dynload_dir}/unicodedata.%{SOABI_optimized}.so
-%{dynload_dir}/xxlimited.%{SOABI_optimized}.so
-%{dynload_dir}/zlib.%{SOABI_optimized}.so
-
-%dir %{pylibdir}/site-packages/
-%dir %{pylibdir}/site-packages/__pycache__/
-%{pylibdir}/site-packages/README.txt
-%{pylibdir}/*.py
-%dir %{pylibdir}/__pycache__/
-%{pylibdir}/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/collections/
-%dir %{pylibdir}/collections/__pycache__/
-%{pylibdir}/collections/*.py
-%{pylibdir}/collections/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/ctypes/
-%dir %{pylibdir}/ctypes/__pycache__/
-%{pylibdir}/ctypes/*.py
-%{pylibdir}/ctypes/__pycache__/*%{bytecode_suffixes}
-%{pylibdir}/ctypes/macholib
-
-%{pylibdir}/curses
-
-%dir %{pylibdir}/dbm/
-%dir %{pylibdir}/dbm/__pycache__/
-%{pylibdir}/dbm/*.py
-%{pylibdir}/dbm/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/distutils/
-%dir %{pylibdir}/distutils/__pycache__/
-%{pylibdir}/distutils/*.py
-%{pylibdir}/distutils/__pycache__/*%{bytecode_suffixes}
-%{pylibdir}/distutils/README
-%{pylibdir}/distutils/command
-%exclude %{pylibdir}/distutils/command/wininst-*.exe
-
-%dir %{pylibdir}/email/
-%dir %{pylibdir}/email/__pycache__/
-%{pylibdir}/email/*.py
-%{pylibdir}/email/__pycache__/*%{bytecode_suffixes}
-%{pylibdir}/email/mime
-%doc %{pylibdir}/email/architecture.rst
-
-%{pylibdir}/encodings
-
-%{pylibdir}/html
-%{pylibdir}/http
-
-%dir %{pylibdir}/importlib/
-%dir %{pylibdir}/importlib/__pycache__/
-%{pylibdir}/importlib/*.py
-%{pylibdir}/importlib/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/json/
-%dir %{pylibdir}/json/__pycache__/
-%{pylibdir}/json/*.py
-%{pylibdir}/json/__pycache__/*%{bytecode_suffixes}
-
-%{pylibdir}/logging
-%{pylibdir}/multiprocessing
-
-%dir %{pylibdir}/sqlite3/
-%dir %{pylibdir}/sqlite3/__pycache__/
-%{pylibdir}/sqlite3/*.py
-%{pylibdir}/sqlite3/__pycache__/*%{bytecode_suffixes}
-
-%if %{without flatpackage}
-%exclude %{pylibdir}/turtle.py
-%exclude %{pylibdir}/__pycache__/turtle*%{bytecode_suffixes}
-%endif
-
-%{pylibdir}/urllib
-%{pylibdir}/xml
+%{pylibdir}/
 
 %if "%{_lib}" == "lib64"
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages/__pycache__/
+%{_prefix}/lib/python%{pybasever}
 %endif
 
-# "Makefile" and the config-32/64.h file are needed by
-# distutils/sysconfig.py:_init_posix(), so we include them in the core
-# package, along with their parent directories (bug 531901):
-%dir %{pylibdir}/config-%{LDVERSION_optimized}-%{_arch}-linux%{_gnu}/
-%{pylibdir}/config-%{LDVERSION_optimized}-%{_arch}-linux%{_gnu}/Makefile
-%dir %{_includedir}/python%{LDVERSION_optimized}/
-%{_includedir}/python%{LDVERSION_optimized}/%{_pyconfig_h}
+%{_includedir}/python%{LDVERSION_optimized}/
 
-%{_libdir}/%{py_INSTSONAME_optimized}
-%if %{without flatpackage}
-%{_libdir}/libpython3.so
-%endif
-
-%if %{without flatpackage}
-%files devel
-%{_bindir}/2to3
-# TODO: Remove 2to3-3.7 once rebased to 3.7
-%{_bindir}/2to3-%{pybasever}
-%endif
-
-%{pylibdir}/config-%{LDVERSION_optimized}-%{_arch}-linux%{_gnu}/*
-%if %{without flatpackage}
-%exclude %{pylibdir}/config-%{LDVERSION_optimized}-%{_arch}-linux%{_gnu}/Makefile
-%exclude %{_includedir}/python%{LDVERSION_optimized}/%{_pyconfig_h}
-%endif
-%{pylibdir}/distutils/command/wininst-*.exe
-%{_includedir}/python%{LDVERSION_optimized}/*.h
-%doc Misc/README.valgrind Misc/valgrind-python.supp Misc/gdbinit
-
-%if %{without flatpackage}
 %{_bindir}/python3-config
-%{_libdir}/pkgconfig/python3.pc
-%{_bindir}/pathfix.py
-%endif
-
 %{_bindir}/python%{pybasever}-config
 %{_bindir}/python%{LDVERSION_optimized}-config
 %{_bindir}/python%{LDVERSION_optimized}-*-config
-%{_libdir}/libpython%{LDVERSION_optimized}.so
+%{_libdir}/libpython%{LDVERSION_optimized}.a
+%dir %{_libdir}/pkgconfig
+%{_libdir}/pkgconfig/python3.pc
 %{_libdir}/pkgconfig/python-%{LDVERSION_optimized}.pc
 %{_libdir}/pkgconfig/python-%{pybasever}.pc
 
-%if %{without flatpackage}
-%files idle
 
-%{_bindir}/idle*
-%else
+%{_bindir}/python3-2to3
+%{_bindir}/2to3-%{pybasever}
+%{_bindir}/idle3
 %{_bindir}/idle%{pybasever}
-%endif
 
-%{pylibdir}/idlelib
-
-%if %{without flatpackage}
-%{_metainfodir}/idle3.appdata.xml
-%{_datadir}/applications/idle3.desktop
-%{_datadir}/icons/hicolor/*/apps/idle3.*
-%endif
-
-%if %{without flatpackage}
-%files tkinter
-%endif
-
-%{pylibdir}/tkinter
-%if %{without flatpackage}
-%exclude %{pylibdir}/tkinter/test
-%endif
-%{dynload_dir}/_tkinter.%{SOABI_optimized}.so
-%{pylibdir}/turtle.py
-%{pylibdir}/__pycache__/turtle*%{bytecode_suffixes}
-%dir %{pylibdir}/turtledemo
-%{pylibdir}/turtledemo/*.py
-%{pylibdir}/turtledemo/*.cfg
-%dir %{pylibdir}/turtledemo/__pycache__/
-%{pylibdir}/turtledemo/__pycache__/*%{bytecode_suffixes}
-
-%if %{without flatpackage}
-%files test
-%endif
-%{pylibdir}/ctypes/test
-%{pylibdir}/distutils/tests
-%{pylibdir}/sqlite3/test
-%{pylibdir}/test
-%{dynload_dir}/_ctypes_test.%{SOABI_optimized}.so
-%{dynload_dir}/_testbuffer.%{SOABI_optimized}.so
-%{dynload_dir}/_testcapi.%{SOABI_optimized}.so
-%{dynload_dir}/_testimportmultiple.%{SOABI_optimized}.so
-%{pylibdir}/lib2to3/tests
-%{pylibdir}/tkinter/test
-%{pylibdir}/unittest/test
-
-
-# We don't bother splitting the debug build out into further subpackages:
-# if you need it, you're probably a developer.
-
-# Hence the manifest is the combination of analogous files in the manifests of
-# all of the other subpackages
-
-%if %{with debug_build}
-%if %{without flatpackage}
-%files debug
-%{_bindir}/python3-debug
-%endif
-
-# Analog of the core subpackage's files:
-%{_bindir}/python%{LDVERSION_debug}
-
-# Analog of the -libs subpackage's files:
-# ...with debug builds of the built-in "extension" modules:
-
-%{dynload_dir}/_blake2.%{SOABI_debug}.so
-%{dynload_dir}/_md5.%{SOABI_debug}.so
-%{dynload_dir}/_sha1.%{SOABI_debug}.so
-%{dynload_dir}/_sha256.%{SOABI_debug}.so
-%{dynload_dir}/_sha3.%{SOABI_debug}.so
-%{dynload_dir}/_sha512.%{SOABI_debug}.so
-
-%{dynload_dir}/_asyncio.%{SOABI_debug}.so
-%{dynload_dir}/_bisect.%{SOABI_debug}.so
-%{dynload_dir}/_bz2.%{SOABI_debug}.so
-%{dynload_dir}/_codecs_cn.%{SOABI_debug}.so
-%{dynload_dir}/_codecs_hk.%{SOABI_debug}.so
-%{dynload_dir}/_codecs_iso2022.%{SOABI_debug}.so
-%{dynload_dir}/_codecs_jp.%{SOABI_debug}.so
-%{dynload_dir}/_codecs_kr.%{SOABI_debug}.so
-%{dynload_dir}/_codecs_tw.%{SOABI_debug}.so
-%{dynload_dir}/_crypt.%{SOABI_debug}.so
-%{dynload_dir}/_csv.%{SOABI_debug}.so
-%{dynload_dir}/_ctypes.%{SOABI_debug}.so
-%{dynload_dir}/_curses.%{SOABI_debug}.so
-%{dynload_dir}/_curses_panel.%{SOABI_debug}.so
-%{dynload_dir}/_dbm.%{SOABI_debug}.so
-%{dynload_dir}/_decimal.%{SOABI_debug}.so
-%{dynload_dir}/_elementtree.%{SOABI_debug}.so
-%if %{with gdbm}
-%{dynload_dir}/_gdbm.%{SOABI_debug}.so
-%endif
-%{dynload_dir}/_hashlib.%{SOABI_debug}.so
-%{dynload_dir}/_heapq.%{SOABI_debug}.so
-%{dynload_dir}/_json.%{SOABI_debug}.so
-%{dynload_dir}/_lsprof.%{SOABI_debug}.so
-%{dynload_dir}/_lzma.%{SOABI_debug}.so
-%{dynload_dir}/_multibytecodec.%{SOABI_debug}.so
-%{dynload_dir}/_multiprocessing.%{SOABI_debug}.so
-%{dynload_dir}/_opcode.%{SOABI_debug}.so
-%{dynload_dir}/_pickle.%{SOABI_debug}.so
-%{dynload_dir}/_posixsubprocess.%{SOABI_debug}.so
-%{dynload_dir}/_random.%{SOABI_debug}.so
-%{dynload_dir}/_socket.%{SOABI_debug}.so
-%{dynload_dir}/_sqlite3.%{SOABI_debug}.so
-%{dynload_dir}/_ssl.%{SOABI_debug}.so
-%{dynload_dir}/_struct.%{SOABI_debug}.so
-%{dynload_dir}/array.%{SOABI_debug}.so
-%{dynload_dir}/audioop.%{SOABI_debug}.so
-%{dynload_dir}/binascii.%{SOABI_debug}.so
-%{dynload_dir}/cmath.%{SOABI_debug}.so
-%{dynload_dir}/_datetime.%{SOABI_debug}.so
-%{dynload_dir}/fcntl.%{SOABI_debug}.so
-%{dynload_dir}/grp.%{SOABI_debug}.so
-%{dynload_dir}/math.%{SOABI_debug}.so
-%{dynload_dir}/mmap.%{SOABI_debug}.so
-%{dynload_dir}/nis.%{SOABI_debug}.so
-%{dynload_dir}/ossaudiodev.%{SOABI_debug}.so
-%{dynload_dir}/parser.%{SOABI_debug}.so
-%{dynload_dir}/pyexpat.%{SOABI_debug}.so
-%{dynload_dir}/readline.%{SOABI_debug}.so
-%{dynload_dir}/resource.%{SOABI_debug}.so
-%{dynload_dir}/select.%{SOABI_debug}.so
-%{dynload_dir}/spwd.%{SOABI_debug}.so
-%{dynload_dir}/syslog.%{SOABI_debug}.so
-%{dynload_dir}/termios.%{SOABI_debug}.so
-%{dynload_dir}/_testmultiphase.%{SOABI_debug}.so
-%{dynload_dir}/unicodedata.%{SOABI_debug}.so
-%{dynload_dir}/zlib.%{SOABI_debug}.so
-
-# No need to split things out the "Makefile" and the config-32/64.h file as we
-# do for the regular build above (bug 531901), since they're all in one package
-# now; they're listed below, under "-devel":
-
-%{_libdir}/%{py_INSTSONAME_debug}
-
-# Analog of the -devel subpackage's files:
-%{pylibdir}/config-%{LDVERSION_debug}-%{_arch}-linux%{_gnu}
-%{_includedir}/python%{LDVERSION_debug}
-%{_bindir}/python%{LDVERSION_debug}-config
-%{_bindir}/python%{LDVERSION_debug}-*-config
-%{_libdir}/libpython%{LDVERSION_debug}.so
-%{_libdir}/libpython%{LDVERSION_debug}.so.1.0
-%{_libdir}/pkgconfig/python-%{LDVERSION_debug}.pc
-
-# Analog of the -tools subpackage's files:
-#  None for now; we could build precanned versions that have the appropriate
-# shebang if needed
-
-# Analog  of the tkinter subpackage's files:
-%{dynload_dir}/_tkinter.%{SOABI_debug}.so
-
-# Analog  of the -test subpackage's files:
-%{dynload_dir}/_ctypes_test.%{SOABI_debug}.so
-%{dynload_dir}/_testbuffer.%{SOABI_debug}.so
-%{dynload_dir}/_testcapi.%{SOABI_debug}.so
-%{dynload_dir}/_testimportmultiple.%{SOABI_debug}.so
-
-%endif # with debug_build
-
-# We put the debug-gdb.py file inside /usr/lib/debug to avoid noise from ldconfig
-# See https://bugzilla.redhat.com/show_bug.cgi?id=562980
-#
-# The /usr/lib/rpm/redhat/macros defines %%__debug_package to use
-# debugfiles.list, and it appears that everything below /usr/lib/debug and
-# (/usr/src/debug) gets added to this file (via LISTFILES) in
-# /usr/lib/rpm/find-debuginfo.sh
-#
-# Hence by installing it below /usr/lib/debug we ensure it is added to the
-# -debuginfo subpackage
-# (if it doesn't, then the rpmbuild ought to fail since the debug-gdb.py
-# payload file would be unpackaged)
-
-# Workaround for https://bugzilla.redhat.com/show_bug.cgi?id=1476593
-%undefine _debuginfo_subpackages
 
 # ======================================================
 # Finally, the changelog:
 # ======================================================
 
 %changelog
-* Sat Jul 14 2018 Fedora Release Engineering <releng@fedoraproject.org> - 3.6.6-2
+* Mon Jul 16 2018 Daniele Viganò <daniele@vigano.me> - 3.6.6-1
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_29_Mass_Rebuild
-
-* Tue Jul 10 2018 Charalampos Stratakis <cstratak@redhat.com> - 3.6.6-1
-- Update to Python 3.6.6
-
-* Mon Jun 18 2018 Miro Hrončok <mhroncok@redhat.com> - 3.6.5-5
-- Introduce python36 package
