@@ -195,12 +195,6 @@ Source: https://www.python.org/ftp/python/%{version}/Python-%{version}.tar.xz
 # Written by bkabrda
 Source8: check-pyc-and-pyo-timestamps.py
 
-# Desktop menu entry for idle3
-Source10: idle3.desktop
-
-# AppData file for idle3
-Source11: idle3.appdata.xml
-
 # 00001 #
 # Fixup distutils/unixccompiler.py to remove standard library path from rpath:
 # Was Patch0 in ivazquez' python3000 specfile:
@@ -729,4 +723,4 @@ end
 
 %changelog
 * Mon Jul 16 2018 Daniele Viganò <daniele@vigano.me> - 3.6.6-1
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_29_Mass_Rebuild
+- First build of oq-python36 (migrated from oq-python35)
