@@ -714,4 +714,4 @@ end
 
 %changelog
 * Mon Jul 16 2018 Daniele Viganò <daniele@vigano.me> - 3.7.0-1
-- First build of oq-python37 (migrated from oq-python37)
+- First build of oq-python37 (migrated from oq-python36)
