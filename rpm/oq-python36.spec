@@ -332,14 +332,13 @@ Patch294: 00294-define-TLS-cipher-suite-on-build-time.patch
 # Descriptions, and metadata for subpackages
 # ==========================================
 
-Requires: redhat-rpm-config
-
 # We'll not provide this, on purpose
 # No package in Fedora shall ever depend on flatpackage via this
 %global __requires_exclude ^python\\(abi\\) = 3\\..$
 %global __provides_exclude ^python\\(abi\\) = 3\\..$
 
 Provides: oq-python3
+Obsoletes: oq-python35
 
 %description
 Python %{pybasever} package for OpenQuake
