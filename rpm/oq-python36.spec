@@ -680,8 +680,7 @@ if st and st.type == "link" then
 end
 
 %files
-%license LICENSE
-%doc README.rst
+%doc README.rst LICENSE
 
 # In /opt/openquake we are the owners of bin, usr and so on
 %dir %{_prefix}
