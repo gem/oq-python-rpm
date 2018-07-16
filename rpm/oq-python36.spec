@@ -117,6 +117,10 @@ License: Python
 %global py_SOVERSION 1.0
 %global py_INSTSONAME_optimized libpython%{LDVERSION_optimized}.so.%{py_SOVERSION}
 
+# Make sure that the proper installation of python is used by macros
+%define __python3 %{_bindir}/python3.5
+%define __python %{__python3}
+
 # Disable automatic bytecompilation. The python3 binary is not yet be
 # available in /usr/bin when Python is built. Also, the bytecompilation fails
 # on files that test invalid syntax.
@@ -143,7 +147,6 @@ BuildRequires: autoconf
 BuildRequires: bluez-libs-devel
 BuildRequires: bzip2
 BuildRequires: bzip2-devel
-BuildRequires: desktop-file-utils
 BuildRequires: expat-devel
 
 BuildRequires: findutils
@@ -164,7 +167,6 @@ BuildRequires: openssl-devel
 BuildRequires: pkgconfig
 BuildRequires: readline-devel
 BuildRequires: sqlite-devel
-BuildRequires: gdb
 
 BuildRequires: tar
 BuildRequires: tcl-devel
@@ -547,8 +549,7 @@ cp -p Tools/scripts/pathfix.py %{buildroot}%{_bindir}/
 LD_LIBRARY_PATH=./build/optimized ./build/optimized/python \
   Tools/scripts/pathfix.py \
   -i "%{_bindir}/python%{pybasever}" -pn \
-  %{buildroot} \
-  %{?with_gdb_hooks:%{buildroot}$DirHoldingGdbPy/*.py}
+  %{buildroot}
 
 # Remove tests for python3-tools which was removed in
 # https://bugzilla.redhat.com/show_bug.cgi?id=1312030
