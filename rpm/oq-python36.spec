@@ -126,6 +126,28 @@ License: Python
 # on files that test invalid syntax.
 %undefine py_auto_byte_compile
 
+# Backported from EPEL:
+#  https://src.fedoraproject.org/cgit/rpms/python36.git/tree/?h=epel7&id=ee1b6fe2f274b9a4b526263f42d208bbfbe08a2f
+# We want to byte-compile the .py files within the packages using the new
+# python3 binary.
+#
+# Unfortunately, rpmbuild's infrastructure requires us to jump through some
+# hoops to avoid byte-compiling with the system python version:
+#   /usr/lib/rpm/redhat/macros sets up build policy that (amongst other things)
+# defines __os_install_post.  In particular, "brp-python-bytecompile" is
+# invoked without an argument thus using the wrong version of python3
+# (/usr/bin/python3.6, rather than the freshly built python3), thus leading to
+# numerous syntax errors, and incorrect magic numbers in the .pyc files.  We
+# thus override __os_install_post to avoid invoking this script:
+%global __os_install_post /usr/lib/rpm/brp-compress \
+  %{!?__debug_package:/usr/lib/rpm/brp-strip %{__strip}} \
+  /usr/lib/rpm/brp-strip-static-archive %{__strip} \
+  /usr/lib/rpm/brp-strip-comment-note %{__strip} %{__objdump} \
+  /usr/lib/rpm/brp-python-hardlink
+# to remove the invocation of brp-python-bytecompile, whilst keeping the
+# invocation of brp-python-hardlink (since this should still work for python3
+# pyc files)
+
 # For multilib support, files that are different between 32- and 64-bit arches
 # need different filenames. Use "64" or "32" according to the word size.
 # Currently, the best way to determine an architecture's word size happens to
@@ -541,7 +563,7 @@ sed -i -e "s/'pyconfig.h'/'%{_pyconfig_h}'/" \
 
 # Install pathfix.py to bindir
 # See https://github.com/fedora-python/python-rpm-porting/issues/24
-cp -p Tools/scripts/pathfix.py %{buildroot}%{_bindir}/
+# cp -p Tools/scripts/pathfix.py %{buildroot}%{_bindir}/
 
 # Switch all shebangs to refer to the specific Python version.
 # This currently only covers files matching ^[a-zA-Z0-9_]+\.py$,
@@ -712,7 +734,7 @@ end
 %{_libdir}/pkgconfig/python-%{pybasever}.pc
 
 
-%{_bindir}/python3-2to3
+%{_bindir}/2to3
 %{_bindir}/2to3-%{pybasever}
 %{_bindir}/idle3
 %{_bindir}/idle%{pybasever}
