@@ -30,14 +30,6 @@ License: Python
 # Note that the bcond macros are named for the CLI option they create.
 # "%%bcond_without" means "ENABLE by default and create a --without option"
 
-# Flat package, i.e. python36, python37, python38 for tox etc.
-# warning: changes some other defaults
-# in Fedora, never turn this on for the python3 package
-# and always keep it on for python36 etc.
-# WARNING: This does not change the package name and summary above
-%bcond_without flatpackage
-
-
 # Expensive optimizations (mainly, profile-guided optimizations)
 %ifarch %{ix86} x86_64
 %bcond_without optimizations
@@ -48,7 +40,7 @@ License: Python
 %endif
 
 # Run the test suite in %%check
-%bcond_without tests
+%bcond_with tests
 
 # Main interpreter loop optimization
 %bcond_without computed_gotos
@@ -160,7 +152,9 @@ BuildRequires: glibc-devel
 BuildRequires: gmp-devel
 BuildRequires: libappstream-glib
 BuildRequires: libffi-devel
+%if 0%{?fedora} >= 27
 BuildRequires: libnsl2-devel
+%endif
 BuildRequires: libtirpc-devel
 BuildRequires: libGL-devel
 BuildRequires: libX11-devel
@@ -183,7 +177,11 @@ BuildRequires: zlib-devel
 BuildRequires: /usr/bin/dtrace
 
 # workaround http://bugs.python.org/issue19804 (test_uuid requires ifconfig)
+%if 0%{?fedora}
 BuildRequires: /usr/sbin/ifconfig
+%else
+BuildRequires: /sbin/ifconfig
+%endif
 
 
 # =======================
@@ -325,6 +323,9 @@ Requires: redhat-rpm-config
 
 Provides: oq-python3
 
+%description
+Python %{pybasever} package for OpenQuake
+
 # ======================================================
 # The prep phase of the build:
 # ======================================================
@@ -425,7 +426,9 @@ BuildPython() {
   --with-system-ffi \
   --enable-loadable-sqlite-extensions \
   --with-dtrace \
+%if 0%{?fedora}
   --with-lto \
+%endif
   --with-ssl-default-suites=openssl \
   $ExtraConfigArgs \
   %{nil}
