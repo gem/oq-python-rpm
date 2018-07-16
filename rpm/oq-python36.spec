@@ -286,13 +286,6 @@ Patch178: 00178-dont-duplicate-flags-in-sysconfig.patch
 # but the LIBPL variable defined there doesn't respect libdir macro
 Patch205: 00205-make-libpl-respect-lib64.patch
 
-# 00251
-# Set values of prefix and exec_prefix in distutils install command
-# to /usr/local if executable is /usr/bin/python* and RPM build
-# is not detected to make pip and distutils install into separate location
-# Fedora Change: https://fedoraproject.org/wiki/Changes/Making_sudo_pip_safe
-Patch251: 00251-change-user-install-location.patch
-
 # 00262 #
 # Backport of PEP 538: Coercing the legacy C locale to a UTF-8 based locale
 # https://www.python.org/dev/peps/pep-0538/
@@ -370,7 +363,6 @@ rm -r Modules/zlib
 %patch178 -p1
 
 %patch205 -p1
-%patch251 -p1
 %patch262 -p1
 %patch274 -p1
 %patch292 -p1
