@@ -330,7 +330,6 @@ Python %{pybasever} package for OpenQuake
 
 # Remove bundled libraries to ensure that we're using the system copy.
 rm -r Modules/expat
-rm -r Modules/zlib
 
 #
 # Apply patches:
