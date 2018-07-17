@@ -706,6 +706,8 @@ end
 %{_bindir}/idle3
 %{_bindir}/idle%{pybasever}
 
+# Workaround for https://bugzilla.redhat.com/show_bug.cgi?id=1476593
+%undefine _debuginfo_subpackages
 
 # ======================================================
 # Finally, the changelog:
