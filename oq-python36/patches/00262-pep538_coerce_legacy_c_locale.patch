@@ -1,8 +1,8 @@
 diff --git a/Doc/using/cmdline.rst b/Doc/using/cmdline.rst
-index 9ffb714..3f7201a 100644
+index d14793a..65aa3ad 100644
 --- a/Doc/using/cmdline.rst
 +++ b/Doc/using/cmdline.rst
-@@ -711,6 +711,45 @@ conflict.
+@@ -728,6 +728,45 @@ conflict.
  
     .. versionadded:: 3.6
  
@@ -49,10 +49,10 @@ index 9ffb714..3f7201a 100644
  ~~~~~~~~~~~~~~~~~~~~
  
 diff --git a/Lib/test/support/script_helper.py b/Lib/test/support/script_helper.py
-index ca5f9c2..7aa460b 100644
+index 507dc48..c3cb720 100644
 --- a/Lib/test/support/script_helper.py
 +++ b/Lib/test/support/script_helper.py
-@@ -51,8 +51,35 @@ def interpreter_requires_environment():
+@@ -56,8 +56,35 @@ def interpreter_requires_environment():
      return __cached_interp_requires_environment
  
  
@@ -90,7 +90,7 @@ index ca5f9c2..7aa460b 100644
  
  
  # Executing the interpreter in a subprocess
-@@ -110,30 +137,7 @@ def run_python_until_end(*args, **env_vars):
+@@ -115,30 +142,7 @@ def run_python_until_end(*args, **env_vars):
  def _assert_python(expected_success, *args, **env_vars):
      res, cmd_line = run_python_until_end(*args, **env_vars)
      if (res.rc and expected_success) or (not res.rc and not expected_success):
@@ -499,50 +499,11 @@ index 0000000..635c98f
 +
 +if __name__ == "__main__":
 +    test_main()
-diff --git a/Lib/test/test_capi.py b/Lib/test/test_capi.py
-index 6e4286e..594dfa9 100644
---- a/Lib/test/test_capi.py
-+++ b/Lib/test/test_capi.py
-@@ -425,32 +425,21 @@ class EmbeddingTests(unittest.TestCase):
-     def test_repeated_init_and_subinterpreters(self):
-         # This is just a "don't crash" test
-         out, err = self.run_embedded_interpreter('repeated_init_and_subinterpreters')
--        if support.verbose:
-+        if support.verbose > 1:
-             print()
-             print(out)
-             print(err)
- 
--    @staticmethod
--    def _get_default_pipe_encoding():
--        rp, wp = os.pipe()
--        try:
--            with os.fdopen(wp, 'w') as w:
--                default_pipe_encoding = w.encoding
--        finally:
--            os.close(rp)
--        return default_pipe_encoding
--
-     def test_forced_io_encoding(self):
-         # Checks forced configuration of embedded interpreter IO streams
-         env = dict(os.environ, PYTHONIOENCODING="utf-8:surrogateescape")
-         out, err = self.run_embedded_interpreter("forced_io_encoding", env=env)
--        if support.verbose:
-+        if support.verbose > 1:
-             print()
-             print(out)
-             print(err)
-         expected_stream_encoding = "utf-8"
-         expected_errors = "surrogateescape"
--        expected_pipe_encoding = self._get_default_pipe_encoding()
-         expected_output = '\n'.join([
-         "--- Use defaults ---",
-         "Expected encoding: default",
 diff --git a/Lib/test/test_cmd_line.py b/Lib/test/test_cmd_line.py
-index ae2bcd4..0a302ff 100644
+index 38156b4..5922ed9 100644
 --- a/Lib/test/test_cmd_line.py
 +++ b/Lib/test/test_cmd_line.py
-@@ -151,6 +152,7 @@ class CmdLineTest(unittest.TestCase):
+@@ -153,6 +153,7 @@ class CmdLineTest(unittest.TestCase):
          env = os.environ.copy()
          # Use C locale to get ascii for the locale encoding
          env['LC_ALL'] = 'C'
@@ -563,10 +524,10 @@ index 7866a5c..b41239a 100644
              'import sys',
              'def dump(name):',
 diff --git a/Modules/main.c b/Modules/main.c
-index b0fb78f..0d8590a 100644
+index 585d696..96d8be4 100644
 --- a/Modules/main.c
 +++ b/Modules/main.c
-@@ -105,7 +105,11 @@ static const char usage_6[] =
+@@ -107,7 +107,11 @@ static const char usage_6[] =
  "   predictable seed.\n"
  "PYTHONMALLOC: set the Python memory allocators and/or install debug hooks\n"
  "   on Python memory allocators. Use PYTHONMALLOC=debug to install debug\n"
@@ -580,7 +541,7 @@ index b0fb78f..0d8590a 100644
  static int
  usage(int exitcode, const wchar_t* program)
 diff --git a/Programs/_testembed.c b/Programs/_testembed.c
-index b0f9087..da892bf 100644
+index 813cf30..2a64092 100644
 --- a/Programs/_testembed.c
 +++ b/Programs/_testembed.c
 @@ -1,4 +1,5 @@
@@ -662,7 +623,7 @@ index a7afbc7..03f8295 100644
      for (i = 0; i < argc; i++) {
          PyMem_RawFree(argv_copy2[i]);
 diff --git a/Python/pylifecycle.c b/Python/pylifecycle.c
-index 640271f..2a22b24 100644
+index ecfdfee..4fee178 100644
 --- a/Python/pylifecycle.c
 +++ b/Python/pylifecycle.c
 @@ -167,6 +167,7 @@ Py_SetStandardStreamEncoding(const char *encoding, const char *errors)
@@ -878,7 +839,7 @@ index 640271f..2a22b24 100644
  #endif
  
      if ((p = Py_GETENV("PYTHONDEBUG")) && *p != '\0')
-@@ -1251,12 +1437,8 @@ initstdio(void)
+@@ -1247,12 +1433,8 @@ initstdio(void)
              }
          }
          if (!errors && !(pythonioencoding && *pythonioencoding)) {
@@ -894,10 +855,10 @@ index 640271f..2a22b24 100644
      }
  
 diff --git a/configure.ac b/configure.ac
-index 601cc84..5cdc021 100644
+index 3f2459a..7444486 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -3310,6 +3310,40 @@ then
+@@ -3360,6 +3360,40 @@ then
  fi
  AC_MSG_RESULT($with_pymalloc)
  
