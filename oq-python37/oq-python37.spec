@@ -201,7 +201,7 @@ BuildRequires: zlib-devel
 BuildRequires: /usr/bin/dtrace
 
 # workaround http://bugs.python.org/issue19804 (test_uuid requires ifconfig)
-%if 0%{?fedora}
+%if 0%{?fedora} || 0%{?el8}
 BuildRequires: /usr/sbin/ifconfig
 %else
 BuildRequires: /sbin/ifconfig
@@ -610,6 +610,8 @@ CheckPython() {
   ConfName=$1
   ConfDir=$(pwd)/build/$ConfName
 
+  export OPENSSL_CONF=/non-existing-file
+
   echo STARTING: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
 
   # Note that we're running the tests using the version of the code in the
@@ -629,6 +631,8 @@ CheckPython() {
     %endif
     %ifarch ppc64le
     -x test_buffer \
+    -x test_tarfile \
+    -x test_ssl \
     %endif
 
   echo FINISHED: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName

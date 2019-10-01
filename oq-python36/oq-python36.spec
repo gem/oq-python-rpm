@@ -18,7 +18,7 @@ URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
-Version: %{pybasever}.6
+Version: %{pybasever}.8
 Release: 1%{?dist}
 License: Python
 
@@ -201,7 +201,7 @@ BuildRequires: zlib-devel
 BuildRequires: /usr/bin/dtrace
 
 # workaround http://bugs.python.org/issue19804 (test_uuid requires ifconfig)
-%if 0%{?fedora}
+%if 0%{?fedora} || 0%{?el8}
 BuildRequires: /usr/sbin/ifconfig
 %else
 BuildRequires: /sbin/ifconfig
@@ -297,12 +297,6 @@ Patch262: 00262-pep538_coerce_legacy_c_locale.patch
 # Upstream uses Debian-style architecture naming. Change to match Fedora.
 Patch274: 00274-fix-arch-names.patch
 
-# 00292 #
-# Restore the public PyExc_RecursionErrorInst symbol that was removed
-# from the 3.6.4 release upstream.
-# Reported upstream: https://bugs.python.org/issue30697
-Patch292: 00292-restore-PyExc_RecursionErrorInst-symbol.patch
-
 # 00294 #
 # Define TLS cipher suite on build time depending
 # on the OpenSSL default cipher suite selection.
@@ -365,7 +359,6 @@ rm -r Modules/zlib
 %patch205 -p1
 %patch262 -p1
 %patch274 -p1
-%patch292 -p1
 %patch294 -p1
 
 
@@ -628,6 +621,8 @@ CheckPython() {
   ConfName=$1
   ConfDir=$(pwd)/build/$ConfName
 
+  export OPENSSL_CONF=/non-existing-file
+
   echo STARTING: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
 
   # Note that we're running the tests using the version of the code in the
@@ -652,6 +647,8 @@ CheckPython() {
     %endif
     %ifarch ppc64le
     -x test_buffer \
+    -x test_tarfile \
+    -x test_ssl \
     %endif
 
   echo FINISHED: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
@@ -737,5 +734,8 @@ end
 # ======================================================
 
 %changelog
+* Mon Sep 30 2019 Daniele Viganò <daniele@vigano.me> - 3.6.8-1
+- Upgrade to Python 3.6.8 and add support for CentOS 8
+
 * Mon Jul 16 2018 Daniele Viganò <daniele@vigano.me> - 3.6.6-1
 - First build of oq-python36 (migrated from oq-python35)
