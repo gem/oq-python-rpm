@@ -642,5 +642,5 @@ end
 # ======================================================
 
 %changelog
-* Mon Jul 16 2018 Daniele Viganò <daniele@vigano.me> - 3.8.2-1
+* Fri May 1 2020 Daniele Viganò <daniele@vigano.me> - 3.8.2-1
 - First build of oq-python38 (migrated from oq-python37)
