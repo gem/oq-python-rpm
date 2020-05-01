@@ -8,9 +8,9 @@ The corresponding Ubuntu packages can be found at https://github.com/gem/oq-pyth
 ```bash
 $ dnf download --source python38
 $ rpm -ivh python3-3.8.2-2.fc32.src.rpm
-$ spectool -g -R oq-python38.spec
+$ spectool -g -R ~/rpmbuild/SPECS/oq-python38.spec
 $ rpmbuild -bs ~/rpmbuild/SPECS/oq-python38.spec
-$ mock -r epel-8-x86_64 ~/rpmbuild/SPECS/oq-python38-3.8.2-1.fc32.src.rpm
+$ mock -r epel-8-x86_64 ~/rpmbuild/SRPMS/oq-python38-3.8.2-1.fc32.src.rpm
 ```
 
 ## Python 3.6
