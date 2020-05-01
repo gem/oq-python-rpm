@@ -45,40 +45,6 @@ License: Python
 # Main interpreter loop optimization
 %bcond_without computed_gotos
 
-# ==================================
-# Notes from bootstraping Python 3.6
-# ==================================
-#
-# New Python major version (3.X) break ABI and bytecode compatibility,
-# so all packages depending on it need to be rebuilt.
-#
-# Due to a dependency cycle between Python, gdb, rpm, pip, setuptools, wheel,
-# and other packages, this isn't straightforward.
-# Build in the following order:
-#
-# 1. At the same time:
-#     - gdb without python support (add %%global _without_python 1 on top of
-#       gdb's SPEC file)
-#     - python-rpm-generators
-#       (this can be done also during step 2., but should be done before 3.)
-# 2. python3 without rewheel (use %%bcond_with rewheel instead of
-#     %%bcond_without)
-# 3. gdb with python support (remove %%global _without_python 1 on top of
-#    gdb's SPEC file)
-# 4. rpm
-# 5. python-setuptools with bootstrap set to 1
-# 6. python-pip with build_wheel set to 0
-# 7. python-wheel with %%bcond_without bootstrap
-# 8. python-setuptools with bootstrap set to 0 and also with_check set to 0
-# 9. python-pip with build_wheel set to 1
-# 10. pyparsing
-# 11. python3 with rewheel
-#
-# Then the most important packages have to be built, in dependency order.
-# These were:
-#   python-sphinx, pytest, python-requests, cloud-init, dnf, anaconda, abrt
-#
-# After these have been built, a targeted rebuild should be done for the rest.
 
 
 # =====================
@@ -118,7 +84,7 @@ License: Python
 %global py_INSTSONAME_optimized libpython%{LDVERSION_optimized}.so.%{py_SOVERSION}
 
 # Make sure that the proper installation of python is used by macros
-%define __python3 %{_bindir}/python3.5
+%define __python3 %{_bindir}/python3.7
 %define __python %{__python3}
 
 # Disable automatic bytecompilation. The python3 binary is not yet be
@@ -304,6 +270,10 @@ Patch291: 00291-setup-Link-ctypes-against-dl-explicitly.patch
 # More information, and a patch number catalog, is at:
 #
 #     https://fedoraproject.org/wiki/SIGs/Python/PythonPatches
+#
+# The patches are stored and rebased at:
+#
+#     https://github.com/fedora-python/cpython
 
 
 # ==========================================
@@ -610,7 +580,14 @@ CheckPython() {
   ConfName=$1
   ConfDir=$(pwd)/build/$ConfName
 
+  # Fedora sets explicit minimum/maximum TLS versions.
+  # Python's test suite assumes that the minimum/maximum version is set to
+  # a magic marker. We workaround the test problem by setting:
   export OPENSSL_CONF=/non-existing-file
+  # https://bugzilla.redhat.com/show_bug.cgi?id=1618753
+  # https://bugzilla.redhat.com/show_bug.cgi?id=1778357
+  # https://bugs.python.org/issue35045
+  # https://bugs.python.org/issue38815
 
   echo STARTING: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
 
@@ -644,7 +621,7 @@ CheckPython() {
 # Check each of the configurations:
 CheckPython optimized
 
-%endif # with tests
+%endif
 
 
 # ======================================================
