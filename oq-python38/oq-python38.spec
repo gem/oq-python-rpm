@@ -294,7 +294,7 @@ topdir=$(pwd)
 %global computed_gotos_flag no
 %endif
 
-%if %{with optimizations}
+%if %{with optimizations} && 0%{!?el7}
 %global optimizations_flag "--enable-optimizations"
 %else
 %global optimizations_flag "--disable-optimizations"
@@ -334,7 +334,7 @@ BuildPython() {
   --with-system-ffi \
   --enable-loadable-sqlite-extensions \
   --with-dtrace \
-%if 0%{?fedora}
+%if 0%{?fedora} || 0%{?el8}
   --with-lto \
 %endif
   --with-ssl-default-suites=openssl \
