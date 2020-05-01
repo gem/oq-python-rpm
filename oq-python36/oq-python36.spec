@@ -428,7 +428,7 @@ BuildPython() {
   --with-system-ffi \
   --enable-loadable-sqlite-extensions \
   --with-dtrace \
-%if 0%{?fedora}
+%if 0%{?fedora} || 0%{?el8}
   --with-lto \
 %endif
   --with-ssl-default-suites=openssl \
