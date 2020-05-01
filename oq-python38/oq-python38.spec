@@ -599,13 +599,10 @@ end
 
 %{_bindir}/pydoc3
 %{_bindir}/python3
-%{_bindir}/pyvenv
 %{_bindir}/pip3
 
 %{_bindir}/pydoc%{pybasever}
 %{_bindir}/python%{pybasever}
-%{_bindir}/python%{pybasever}m
-%{_bindir}/pyvenv-%{pybasever}
 %{_bindir}/pip%{pybasever}
 %{_bindir}/easy_install-%{pybasever}
 %{_mandir}
@@ -620,14 +617,13 @@ end
 
 %{_bindir}/python3-config
 %{_bindir}/python%{pybasever}-config
-%{_bindir}/python%{LDVERSION_optimized}-config
 %{_bindir}/python%{LDVERSION_optimized}-*-config
 %{_libdir}/libpython%{LDVERSION_optimized}.a
 %dir %{_libdir}/pkgconfig
 %{_libdir}/pkgconfig/python3.pc
-%{_libdir}/pkgconfig/python-%{LDVERSION_optimized}.pc
+%{_libdir}/pkgconfig/python3-embed.pc
 %{_libdir}/pkgconfig/python-%{pybasever}.pc
-
+%{_libdir}/pkgconfig/python-%{pybasever}-embed.pc
 
 %{_bindir}/2to3
 %{_bindir}/2to3-%{pybasever}
