@@ -294,6 +294,8 @@ topdir=$(pwd)
 %global computed_gotos_flag no
 %endif
 
+# Compile toolchain in EL7 is too old to support optimizations
+# instead of using a custom newer gcc we disable optimizations on EL7
 %if %{with optimizations} && 0%{!?el7}
 %global optimizations_flag "--enable-optimizations"
 %else

@@ -734,6 +734,9 @@ end
 # ======================================================
 
 %changelog
+* Fri May 1 2020 Daniele Viganò <daniele@vigano.me> - 3.6.8-2
+- Enable LTO on CentOS 8/el8
+
 * Mon Sep 30 2019 Daniele Viganò <daniele@vigano.me> - 3.6.8-1
 - Upgrade to Python 3.6.8 and add support for CentOS 8
 

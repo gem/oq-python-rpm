@@ -333,6 +333,8 @@ topdir=$(pwd)
 %global computed_gotos_flag no
 %endif
 
+# Compile toolchain in EL7 is too old to support optimizations
+# instead of using a custom newer gcc we disable optimizations on EL7
 %if %{with optimizations} && 0%{!?el7}
 %global optimizations_flag "--enable-optimizations"
 %else
@@ -682,4 +684,7 @@ end
 
 %changelog
 * Fri May 1 2020 Daniele Viganò <daniele@vigano.me> - 3.7.7-1
-- First build of oq-python37
+- Upgrade to Python 3.7.7
+
+* Mon Jul 16 2018 Daniele Viganò <daniele@vigano.me> - 3.7.0-1
+- First build of oq-python37 (migrated from oq-python36)
