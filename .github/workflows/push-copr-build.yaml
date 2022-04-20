@@ -7,12 +7,24 @@ on:
   pull_request:
 
 jobs:
+
   build:
     name: Submit a build from Fedora container
-    # Run in Fedora container on Ubuntu VM 
-    container: fedora:latest
     runs-on: ubuntu-latest
+    env:
+      GITHUB_PULL_REQUEST: ${{ github.event.number }}
+      GITHUB_DEF_BR:  ${{ github.event.repository.default_branch }}
+      GITHUB_REF:  ${{ github.ref }}
+      GITHUB_HD_REF:  ${{ github.head_ref }}
+      GITHUB_BS_REF:  ${{ github.base_ref }}
+    strategy:
+      matrix:
+        oqpython-version: [oq-python37, oq-python38]
+    # Run in Fedora container on Ubuntu VM 
+        container: ["fedora:latest"]
 
+    container:
+      image: ${{ matrix.container }}
     steps:
       - name: Clone Repository 
         uses: actions/checkout@v2
@@ -23,9 +35,8 @@ jobs:
         run: |
           mkdir -p "$HOME/.config"
           echo "$API_TOKEN_CONTENT" > "$HOME/.config/copr"
-          pwd
           ls -lrt
-          cd $HOME
+          cd ${{ matrix.oqpython-version }} 
           ls -lrt
 
       - name: Install tooling for source RPM build
