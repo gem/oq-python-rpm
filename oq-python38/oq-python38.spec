@@ -7,10 +7,10 @@
 # Top-level metadata
 # ==================
 
-%global pybasever 3.6
+%global pybasever 3.8
 
 # pybasever without the dot:
-%global pyshortver 36
+%global pyshortver 38
 
 Name: oq-python%{pyshortver}
 Summary: Version %{pybasever} of the Python interpreter for OpenQuake
@@ -18,7 +18,7 @@ URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
-Version: %{pybasever}.8
+Version: %{pybasever}.2
 Release: 1%{?dist}
 License: Python
 
@@ -45,40 +45,6 @@ License: Python
 # Main interpreter loop optimization
 %bcond_without computed_gotos
 
-# ==================================
-# Notes from bootstraping Python 3.6
-# ==================================
-#
-# New Python major version (3.X) break ABI and bytecode compatibility,
-# so all packages depending on it need to be rebuilt.
-#
-# Due to a dependency cycle between Python, gdb, rpm, pip, setuptools, wheel,
-# and other packages, this isn't straightforward.
-# Build in the following order:
-#
-# 1. At the same time:
-#     - gdb without python support (add %%global _without_python 1 on top of
-#       gdb's SPEC file)
-#     - python-rpm-generators
-#       (this can be done also during step 2., but should be done before 3.)
-# 2. python3 without rewheel (use %%bcond_with rewheel instead of
-#     %%bcond_without)
-# 3. gdb with python support (remove %%global _without_python 1 on top of
-#    gdb's SPEC file)
-# 4. rpm
-# 5. python-setuptools with bootstrap set to 1
-# 6. python-pip with build_wheel set to 0
-# 7. python-wheel with %%bcond_without bootstrap
-# 8. python-setuptools with bootstrap set to 0 and also with_check set to 0
-# 9. python-pip with build_wheel set to 1
-# 10. pyparsing
-# 11. python3 with rewheel
-#
-# Then the most important packages have to be built, in dependency order.
-# These were:
-#   python-sphinx, pytest, python-requests, cloud-init, dnf, anaconda, abrt
-#
-# After these have been built, a targeted rebuild should be done for the rest.
 
 
 # =====================
@@ -90,7 +56,7 @@ License: Python
 
 # ABIFLAGS, LDVERSION and SOABI are in the upstream configure.ac
 # See PEP 3149 for some background: http://www.python.org/dev/peps/pep-3149/
-%global ABIFLAGS_optimized m
+%global ABIFLAGS_optimized %{nil}
 
 %global LDVERSION_optimized %{pybasever}%{ABIFLAGS_optimized}
 
@@ -118,7 +84,7 @@ License: Python
 %global py_INSTSONAME_optimized libpython%{LDVERSION_optimized}.so.%{py_SOVERSION}
 
 # Make sure that the proper installation of python is used by macros
-%define __python3 %{_bindir}/python3.5
+%define __python3 %{_bindir}/python3.8
 %define __python %{__python3}
 
 # Disable automatic bytecompilation. The python3 binary is not yet be
@@ -216,8 +182,8 @@ Source: https://www.python.org/ftp/python/%{version}/Python-%{version}.tar.xz
 
 # A simple script to check timestamps of bytecode files
 # Run in check section with Python that is currently being built
-# Written by bkabrda
-Source8: check-pyc-and-pyo-timestamps.py
+# Originally written by bkabrda
+Source8: check-pyc-timestamps.py
 
 # 00001 #
 # Fixup distutils/unixccompiler.py to remove standard library path from rpath:
@@ -230,80 +196,24 @@ Patch1:         00001-rpath.patch
 # Not yet sent upstream.
 Patch102: 00102-lib64.patch
 
-# 00132 #
-# Add non-standard hooks to unittest for use in the "check" phase below, when
-# running selftests within the build:
-#   @unittest._skipInRpmBuild(reason)
-# for tests that hang or fail intermittently within the build environment, and:
-#   @unittest._expectedFailureInRpmBuild
-# for tests that always fail within the build environment
-#
-# The hooks only take effect if WITHIN_PYTHON_RPM_BUILD is set in the
-# environment, which we set manually in the appropriate portion of the "check"
-# phase below (and which potentially other python-* rpms could set, to reuse
-# these unittest hooks in their own "check" phases)
-Patch132: 00132-add-rpmbuild-hooks-to-unittest.patch
-
-# 00155 #
-# Avoid allocating thunks in ctypes unless absolutely necessary, to avoid
-# generating SELinux denials on "import ctypes" and "import uuid" when
-# embedding Python within httpd
-# See https://bugzilla.redhat.com/show_bug.cgi?id=814391
-Patch155: 00155-avoid-ctypes-thunks.patch
-
-# 00160 #
-# Python 3.3 added os.SEEK_DATA and os.SEEK_HOLE, which may be present in the
-# header files in the build chroot, but may not be supported in the running
-# kernel, hence we disable this test in an rpm build.
-# Adding these was upstream issue http://bugs.python.org/issue10142
-# Not yet sent upstream
-Patch160: 00160-disable-test_fs_holes-in-rpm-build.patch
-
-# 00163 #
-# Some tests within test_socket fail intermittently when run inside Koji;
-# disable them using unittest._skipInRpmBuild
-# Not yet sent upstream
-Patch163: 00163-disable-parts-of-test_socket-in-rpm-build.patch
-
-# 00170 #
-# In debug builds, try to print repr() when a C-level assert fails in the
-# garbage collector (typically indicating a reference-counting error
-# somewhere else e.g in an extension module)
-# The new macros/functions within gcmodule.c are hidden to avoid exposing
-# them within the extension API.
-# Sent upstream: http://bugs.python.org/issue9263
-# See https://bugzilla.redhat.com/show_bug.cgi?id=614680
-Patch170: 00170-gc-assertions.patch
-
-# 00178 #
-# Don't duplicate various FLAGS in sysconfig values
-# http://bugs.python.org/issue17679
-# Does not affect python2 AFAICS (different sysconfig values initialization)
-Patch178: 00178-dont-duplicate-flags-in-sysconfig.patch
-
-# 00205 #
-# LIBPL variable in makefile takes LIBPL from configure.ac
-# but the LIBPL variable defined there doesn't respect libdir macro
-Patch205: 00205-make-libpl-respect-lib64.patch
-
-# 00262 #
-# Backport of PEP 538: Coercing the legacy C locale to a UTF-8 based locale
-# https://www.python.org/dev/peps/pep-0538/
-# Fedora Change: https://fedoraproject.org/wiki/Changes/python3_c.utf-8_locale
-# Original proposal: https://bugzilla.redhat.com/show_bug.cgi?id=1404918
-Patch262: 00262-pep538_coerce_legacy_c_locale.patch
+# 00251
+# Set values of prefix and exec_prefix in distutils install command
+# to /usr/local if executable is /usr/bin/python* and RPM build
+# is not detected to make pip and distutils install into separate location
+# Fedora Change: https://fedoraproject.org/wiki/Changes/Making_sudo_pip_safe
+# Downstream only: Awaiting resources to work on upstream PEP
+Patch251: 00251-change-user-install-location.patch
 
 # 00274 #
 # Upstream uses Debian-style architecture naming. Change to match Fedora.
 Patch274: 00274-fix-arch-names.patch
 
-# 00294 #
-# Define TLS cipher suite on build time depending
-# on the OpenSSL default cipher suite selection.
-# Fixed upstream on CPython's 3.7 branch:
-# https://bugs.python.org/issue31429
-# See also: https://bugzilla.redhat.com/show_bug.cgi?id=1489816
-Patch294: 00294-define-TLS-cipher-suite-on-build-time.patch
+# 00328 #
+# Restore pyc to TIMESTAMP invalidation mode as default in rpmbubild
+# See https://src.fedoraproject.org/rpms/redhat-rpm-config/pull-request/57#comment-27426
+# Downstream only: only used when building RPM packages
+# Ideally, we should talk to upstream and explain why we don't want this
+Patch328: 00328-pyc-timestamp-invalidation-mode.patch
 
 # (New patches go here ^^^)
 #
@@ -313,6 +223,10 @@ Patch294: 00294-define-TLS-cipher-suite-on-build-time.patch
 # More information, and a patch number catalog, is at:
 #
 #     https://fedoraproject.org/wiki/SIGs/Python/PythonPatches
+#
+# The patches are stored and rebased at:
+#
+#     https://github.com/fedora-python/cpython
 
 
 # ==========================================
@@ -325,7 +239,7 @@ Patch294: 00294-define-TLS-cipher-suite-on-build-time.patch
 %global __provides_exclude ^python\\(abi\\) = 3\\..$
 
 Provides: oq-python3
-Obsoletes: oq-python35
+Obsoletes: oq-python35 oq-python36 oq-python37
 
 %description
 Python %{pybasever} package for OpenQuake
@@ -339,7 +253,6 @@ Python %{pybasever} package for OpenQuake
 
 # Remove bundled libraries to ensure that we're using the system copy.
 rm -r Modules/expat
-rm -r Modules/zlib
 
 #
 # Apply patches:
@@ -349,17 +262,10 @@ rm -r Modules/zlib
 %if "%{_lib}" == "lib64"
 %patch102 -p1
 %endif
-%patch132 -p1
-%patch155 -p1
-%patch160 -p1
-%patch163 -p1
-%patch170 -p1
-%patch178 -p1
 
-%patch205 -p1
-%patch262 -p1
+%patch251 -p1
 %patch274 -p1
-%patch294 -p1
+%patch328 -p1
 
 
 # Remove files that should be generated by the build
@@ -388,7 +294,9 @@ topdir=$(pwd)
 %global computed_gotos_flag no
 %endif
 
-%if %{with optimizations}
+# Compile toolchain in EL7 is too old to support optimizations
+# instead of using a custom newer gcc we disable optimizations on EL7
+%if %{with optimizations} && 0%{!?el7}
 %global optimizations_flag "--enable-optimizations"
 %else
 %global optimizations_flag "--disable-optimizations"
@@ -466,7 +374,7 @@ topdir=$(pwd)
 # Filanames are defined here:
 %global _pyconfig32_h pyconfig-32.h
 %global _pyconfig64_h pyconfig-64.h
-%global _pyconfig_h pyconfig-%{wordsize}.h
+%global _pyconfig_h pyconfig-%{__isa_bits}.h
 
 # Use a common function to do an install for all our configurations:
 InstallPython() {
@@ -621,7 +529,14 @@ CheckPython() {
   ConfName=$1
   ConfDir=$(pwd)/build/$ConfName
 
+  # Fedora sets explicit minimum/maximum TLS versions.
+  # Python's test suite assumes that the minimum/maximum version is set to
+  # a magic marker. We workaround the test problem by setting:
   export OPENSSL_CONF=/non-existing-file
+  # https://bugzilla.redhat.com/show_bug.cgi?id=1618753
+  # https://bugzilla.redhat.com/show_bug.cgi?id=1778357
+  # https://bugs.python.org/issue35045
+  # https://bugs.python.org/issue38815
 
   echo STARTING: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
 
@@ -632,16 +547,11 @@ CheckPython() {
   # our non-standard decorators take effect on the relevant tests:
   #   @unittest._skipInRpmBuild(reason)
   #   @unittest._expectedFailureInRpmBuild
-  # test_faulthandler.test_register_chain currently fails on ppc64le and
-  #   aarch64, see upstream bug http://bugs.python.org/issue21131
   WITHIN_PYTHON_RPM_BUILD= \
   LD_LIBRARY_PATH=$ConfDir $ConfDir/python -m test.regrtest \
     -wW --slowest --findleaks \
     -x test_distutils \
     -x test_bdist_rpm \
-    %ifarch ppc64le aarch64
-    -x test_faulthandler \
-    %endif
     %ifarch %{mips64}
     -x test_ctypes \
     %endif
@@ -660,7 +570,7 @@ CheckPython() {
 # Check each of the configurations:
 CheckPython optimized
 
-%endif # with tests
+%endif
 
 
 # ======================================================
@@ -691,13 +601,10 @@ end
 
 %{_bindir}/pydoc3
 %{_bindir}/python3
-%{_bindir}/pyvenv
 %{_bindir}/pip3
 
 %{_bindir}/pydoc%{pybasever}
 %{_bindir}/python%{pybasever}
-%{_bindir}/python%{pybasever}m
-%{_bindir}/pyvenv-%{pybasever}
 %{_bindir}/pip%{pybasever}
 %{_bindir}/easy_install-%{pybasever}
 %{_mandir}
@@ -712,14 +619,13 @@ end
 
 %{_bindir}/python3-config
 %{_bindir}/python%{pybasever}-config
-%{_bindir}/python%{LDVERSION_optimized}-config
 %{_bindir}/python%{LDVERSION_optimized}-*-config
 %{_libdir}/libpython%{LDVERSION_optimized}.a
 %dir %{_libdir}/pkgconfig
 %{_libdir}/pkgconfig/python3.pc
-%{_libdir}/pkgconfig/python-%{LDVERSION_optimized}.pc
+%{_libdir}/pkgconfig/python3-embed.pc
 %{_libdir}/pkgconfig/python-%{pybasever}.pc
-
+%{_libdir}/pkgconfig/python-%{pybasever}-embed.pc
 
 %{_bindir}/2to3
 %{_bindir}/2to3-%{pybasever}
@@ -734,11 +640,5 @@ end
 # ======================================================
 
 %changelog
-* Fri May 1 2020 Daniele Viganò <daniele@vigano.me> - 3.6.8-2
-- Enable LTO on CentOS 8/el8
-
-* Mon Sep 30 2019 Daniele Viganò <daniele@vigano.me> - 3.6.8-1
-- Upgrade to Python 3.6.8 and add support for CentOS 8
-
-* Mon Jul 16 2018 Daniele Viganò <daniele@vigano.me> - 3.6.6-1
-- First build of oq-python36 (migrated from oq-python35)
+* Fri May 1 2020 Daniele Viganò <daniele@vigano.me> - 3.8.2-1
+- First build of oq-python38 (migrated from oq-python37)
