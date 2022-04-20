@@ -1,0 +1,30 @@
+---
+name: RPM build in Fedora Copr
+on:
+  # Builf for push on master and pull request
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build:
+    name: Submit a build from Fedora container
+    # Run in Fedora container on Ubuntu VM 
+    container: fedora:latest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone Repository 
+        uses: actions/checkout@v2
+
+      - name: Install API token for copr-cli
+        env:
+          API_TOKEN_CONTENT: ${{ secrets.COPR_API_TOKEN }}
+        run: |
+          mkdir -p "$HOME/.config"
+          echo "$API_TOKEN_CONTENT" > "$HOME/.config/copr"
+
+      - name: Install tooling for source RPM build
+        run: |
+          dnf -y install @development-tools @rpm-development-tools
+          dnf -y install copr-cli make
