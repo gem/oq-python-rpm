@@ -67,7 +67,7 @@ ExcludeArch: i686
 # In RHEL 9+, we obsolete/provide Platform Python from regular Python
 # This is only appropriate for the main Python build
 # RHEL: Disabled for python39 module
-
+%bcond_with rhel8_compat_shims
 
 # =====================
 # General global macros
@@ -79,10 +79,27 @@ ExcludeArch: i686
 # ABIFLAGS, LDVERSION and SOABI are in the upstream configure.ac
 # See PEP 3149 for some background: http://www.python.org/dev/peps/pep-3149/
 %global ABIFLAGS_optimized %{nil}
+%global ABIFLAGS_debug     d
 
 %global LDVERSION_optimized %{pybasever}%{ABIFLAGS_optimized}
+%global LDVERSION_debug     %{pybasever}%{ABIFLAGS_debug}
 
-%global SOABI_optimized cpython-%{pyshortver}%{ABIFLAGS_optimized}-%{_arch}-linux%{_gnu}
+
+# When we use the upstream arch triplets, we convert them from the legacy ones
+# This is reversed in prep when %%with legacy_archnames, so we keep both macros
+%global platform_triplet_legacy %{_arch}-linux%{_gnu}
+%global platform_triplet_upstream %{expand:%(echo %{platform_triplet_legacy} | sed -E \\
+    -e 's/^arm(eb)?-linux-gnueabi$/arm\\1-linux-gnueabihf/' \\
+    -e 's/^mips64(el)?-linux-gnu$/mips64\\1-linux-gnuabi64/' \\
+    -e 's/^ppc(64)?(le)?-linux-gnu$/powerpc\\1\\2-linux-gnu/')}
+%if %{with legacy_archnames}
+%global platform_triplet %{platform_triplet_legacy}
+%else
+%global platform_triplet %{platform_triplet_upstream}
+%endif
+
+%global SOABI_optimized cpython-%{pyshortver}%{ABIFLAGS_optimized}-%{platform_triplet}
+%global SOABI_debug     cpython-%{pyshortver}%{ABIFLAGS_debug}-%{platform_triplet}
 
 # All bytecode files are in a __pycache__ subdirectory, with a name
 # reflecting the version of the bytecode.
