@@ -18,10 +18,14 @@ URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
-Version: %{pybasever}.2
-Release: 1%{?dist}
+Version: %{pybasever}.6
+Release: 2%{?dist}
 License: Python
 
+# Exclude i686 arch. Due to a modularity issue it's being added to the
+# x86_64 compose of CRB, but we don't want to ship it at all.
+# See: https://projects.engineering.redhat.com/browse/RCM-72605
+ExcludeArch: i686
 
 # ==================================
 # Conditionals controlling the build
@@ -31,20 +35,38 @@ License: Python
 # "%%bcond_without" means "ENABLE by default and create a --without option"
 
 # Expensive optimizations (mainly, profile-guided optimizations)
-%ifarch %{ix86} x86_64
 %bcond_without optimizations
-%else
-# On some architectures, the optimized build takes tens of hours, possibly
-# longer than Koji's 24-hour timeout. Disable optimizations here.
-%bcond_with optimizations
-%endif
+
+# https://fedoraproject.org/wiki/Changes/PythonNoSemanticInterpositionSpeedup
+%bcond_without no_semantic_interposition
 
 # Run the test suite in %%check
-%bcond_with tests
+%bcond_without tests
+
+# Support for the GDB debugger
+%bcond_without gdb_hooks
+
+# The dbm.gnu module (key-value database)
+%bcond_without gdbm
 
 # Main interpreter loop optimization
 %bcond_without computed_gotos
 
+
+# https://fedoraproject.org/wiki/Changes/Python_Upstream_Architecture_Names
+# For a very long time we have converted "upstream architecture names" to "Fedora names".
+# This made sense at the time, see https://github.com/pypa/manylinux/issues/687#issuecomment-666362947
+# However, with manylinux wheels popularity growth, this is now a problem.
+# Wheels built on a Linux that doesn't do this were not compatible with ours and vice versa.
+# We now have a compatibility layer to workaround a problem,
+# but we also no longer use the legacy arch names in Fedora 34+.
+# This bcond controls the behavior. The defaults should be good for anybody.
+# RHEL: Disabled by default
+%bcond_with legacy_archnames
+
+# In RHEL 9+, we obsolete/provide Platform Python from regular Python
+# This is only appropriate for the main Python build
+# RHEL: Disabled for python39 module
 
 
 # =====================
