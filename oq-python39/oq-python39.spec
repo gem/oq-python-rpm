@@ -221,7 +221,7 @@ BuildRequires: python3-rpm-generators
 # =======================
 # Source code and patches
 # =======================
-#Source: https://www.python.org/ftp/python/%{version}/Python-%{version}.tar.xz
+#
 
 Source0: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz
 Source1: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz.asc
