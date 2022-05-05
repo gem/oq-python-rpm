@@ -356,10 +356,6 @@ Patch353: 00353-architecture-names-upstream-downstream.patch
 # Descriptions, and metadata for subpackages
 # ==========================================
 
-# Require alternatives version that implements the --keep-foreign flag
-Requires:         alternatives >= 1.19.1-1
-Requires(post):   alternatives >= 1.19.1-1
-Requires(postun): alternatives >= 1.19.1-1
 
 # When the user tries to `yum install python`, yum will list this package among
 # the possible alternatives
@@ -368,6 +364,9 @@ Provides: oqpython%{pybasever}%{?_isa} = %{version}-%{release}
 Obsoletes: oq-python35 oq-python36 oq-python37
 
 %description
+Python %{pybasever} package for Openquake 
+
+%description -n %{pkgname}
 Python %{pybasever} package for Openquake 
 
 %package -n %{pkgname}
@@ -817,7 +816,6 @@ CheckPython optimized
 # Files for each RPM (sub)package
 # ======================================================
 
-%files -n %{pkgname}-rpm-macros
 %{rpmmacrodir}/macros.python%{pyshortver}
 
 %files -n %{pkgname}
