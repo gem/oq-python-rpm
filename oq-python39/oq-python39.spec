@@ -366,13 +366,6 @@ Obsoletes: oq-python35 oq-python36 oq-python37
 %description
 Python %{pybasever} package for Openquake 
 
-%description -n %{pkgname}
-Python %{pybasever} package for Openquake 
-
-%package -n %{pkgname}
-Summary: OQ Python %{pybasever} interpreter
-
-
 # ======================================================
 # The prep phase of the build:
 # ======================================================
@@ -818,7 +811,6 @@ CheckPython optimized
 
 %{rpmmacrodir}/macros.python%{pyshortver}
 
-%files -n %{pkgname}
 %doc README.rst LICENSE
 
 # In /opt/openquake we are the owners of bin, usr and so on
