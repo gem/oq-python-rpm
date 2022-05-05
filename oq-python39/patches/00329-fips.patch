@@ -1,0 +1,2573 @@
+From 918e294d56e646e67553550c87b4a9e30cac1f67 Mon Sep 17 00:00:00 2001
+From: Charalampos Stratakis <cstratak@redhat.com>
+Date: Fri, 29 Jan 2021 14:16:21 +0100
+Subject: [PATCH 01/13] Use python's fall backs for the crypto it implements
+ only if we are not in FIPS mode
+
+---
+ Lib/hashlib.py           | 194 +++++++++++++++------------------------
+ Lib/test/test_hashlib.py |   1 +
+ 2 files changed, 76 insertions(+), 119 deletions(-)
+
+diff --git a/Lib/hashlib.py b/Lib/hashlib.py
+index 58c340d..1fd80c7 100644
+--- a/Lib/hashlib.py
++++ b/Lib/hashlib.py
+@@ -68,8 +68,6 @@ __all__ = __always_supported + ('new', 'algorithms_guaranteed',
+                                 'algorithms_available', 'pbkdf2_hmac')
+ 
+ 
+-__builtin_constructor_cache = {}
+-
+ # Prefer our blake2 implementation
+ # OpenSSL 1.1.0 comes with a limited implementation of blake2b/s. The OpenSSL
+ # implementations neither support keyed blake2 (blake2 MAC) nor advanced
+@@ -79,54 +77,64 @@ __block_openssl_constructor = {
+     'blake2b', 'blake2s',
+ }
+ 
+-def __get_builtin_constructor(name):
+-    cache = __builtin_constructor_cache
+-    constructor = cache.get(name)
+-    if constructor is not None:
+-        return constructor
+-    try:
+-        if name in {'SHA1', 'sha1'}:
+-            import _sha1
+-            cache['SHA1'] = cache['sha1'] = _sha1.sha1
+-        elif name in {'MD5', 'md5'}:
+-            import _md5
+-            cache['MD5'] = cache['md5'] = _md5.md5
+-        elif name in {'SHA256', 'sha256', 'SHA224', 'sha224'}:
+-            import _sha256
+-            cache['SHA224'] = cache['sha224'] = _sha256.sha224
+-            cache['SHA256'] = cache['sha256'] = _sha256.sha256
+-        elif name in {'SHA512', 'sha512', 'SHA384', 'sha384'}:
+-            import _sha512
+-            cache['SHA384'] = cache['sha384'] = _sha512.sha384
+-            cache['SHA512'] = cache['sha512'] = _sha512.sha512
+-        elif name in {'blake2b', 'blake2s'}:
+-            import _blake2
+-            cache['blake2b'] = _blake2.blake2b
+-            cache['blake2s'] = _blake2.blake2s
+-        elif name in {'sha3_224', 'sha3_256', 'sha3_384', 'sha3_512'}:
+-            import _sha3
+-            cache['sha3_224'] = _sha3.sha3_224
+-            cache['sha3_256'] = _sha3.sha3_256
+-            cache['sha3_384'] = _sha3.sha3_384
+-            cache['sha3_512'] = _sha3.sha3_512
+-        elif name in {'shake_128', 'shake_256'}:
+-            import _sha3
+-            cache['shake_128'] = _sha3.shake_128
+-            cache['shake_256'] = _sha3.shake_256
+-    except ImportError:
+-        pass  # no extension module, this hash is unsupported.
+-
+-    constructor = cache.get(name)
+-    if constructor is not None:
+-        return constructor
+-
+-    raise ValueError('unsupported hash type ' + name)
++try:
++    from _hashlib import get_fips_mode
++except ImportError:
++    def get_fips_mode():
++        return 0
++
++if not get_fips_mode():
++    __builtin_constructor_cache = {}
++
++    def __get_builtin_constructor(name):
++        cache = __builtin_constructor_cache
++        constructor = cache.get(name)
++        if constructor is not None:
++            return constructor
++        try:
++            if name in {'SHA1', 'sha1'}:
++                import _sha1
++                cache['SHA1'] = cache['sha1'] = _sha1.sha1
++            elif name in {'MD5', 'md5'}:
++                import _md5
++                cache['MD5'] = cache['md5'] = _md5.md5
++            elif name in {'SHA256', 'sha256', 'SHA224', 'sha224'}:
++                import _sha256
++                cache['SHA224'] = cache['sha224'] = _sha256.sha224
++                cache['SHA256'] = cache['sha256'] = _sha256.sha256
++            elif name in {'SHA512', 'sha512', 'SHA384', 'sha384'}:
++                import _sha512
++                cache['SHA384'] = cache['sha384'] = _sha512.sha384
++                cache['SHA512'] = cache['sha512'] = _sha512.sha512
++            elif name in {'blake2b', 'blake2s'}:
++                import _blake2
++                cache['blake2b'] = _blake2.blake2b
++                cache['blake2s'] = _blake2.blake2s
++            elif name in {'sha3_224', 'sha3_256', 'sha3_384', 'sha3_512'}:
++                import _sha3
++                cache['sha3_224'] = _sha3.sha3_224
++                cache['sha3_256'] = _sha3.sha3_256
++                cache['sha3_384'] = _sha3.sha3_384
++                cache['sha3_512'] = _sha3.sha3_512
++            elif name in {'shake_128', 'shake_256'}:
++                import _sha3
++                cache['shake_128'] = _sha3.shake_128
++                cache['shake_256'] = _sha3.shake_256
++        except ImportError:
++            pass  # no extension module, this hash is unsupported.
++
++        constructor = cache.get(name)
++        if constructor is not None:
++            return constructor
++
++        raise ValueError('unsupported hash type ' + name)
+ 
+ 
+ def __get_openssl_constructor(name):
+-    if name in __block_openssl_constructor:
+-        # Prefer our builtin blake2 implementation.
+-        return __get_builtin_constructor(name)
++    if not get_fips_mode():
++        if name in __block_openssl_constructor:
++            # Prefer our builtin blake2 implementation.
++            return __get_builtin_constructor(name)
+     try:
+         # MD5, SHA1, and SHA2 are in all supported OpenSSL versions
+         # SHA3/shake are available in OpenSSL 1.1.1+
+@@ -141,21 +149,23 @@ def __get_openssl_constructor(name):
+         return __get_builtin_constructor(name)
+ 
+ 
+-def __py_new(name, data=b'', **kwargs):
+-    """new(name, data=b'', **kwargs) - Return a new hashing object using the
+-    named algorithm; optionally initialized with data (which must be
+-    a bytes-like object).
+-    """
+-    return __get_builtin_constructor(name)(data, **kwargs)
++if not get_fips_mode():
++    def __py_new(name, data=b'', **kwargs):
++        """new(name, data=b'', **kwargs) - Return a new hashing object using the
++        named algorithm; optionally initialized with data (which must be
++        a bytes-like object).
++        """
++        return __get_builtin_constructor(name)(data, **kwargs)
+ 
+ 
+ def __hash_new(name, data=b'', **kwargs):
+     """new(name, data=b'') - Return a new hashing object using the named algorithm;
+     optionally initialized with data (which must be a bytes-like object).
+     """
+-    if name in __block_openssl_constructor:
+-        # Prefer our builtin blake2 implementation.
+-        return __get_builtin_constructor(name)(data, **kwargs)
++    if not get_fips_mode():
++        if name in __block_openssl_constructor:
++            # Prefer our builtin blake2 implementation.
++            return __get_builtin_constructor(name)(data, **kwargs)
+     try:
+         return _hashlib.new(name, data, **kwargs)
+     except ValueError:
+@@ -163,6 +173,8 @@ def __hash_new(name, data=b'', **kwargs):
+         # hash, try using our builtin implementations.
+         # This allows for SHA224/256 and SHA384/512 support even though
+         # the OpenSSL library prior to 0.9.8 doesn't provide them.
++        if get_fips_mode():
++            raise
+         return __get_builtin_constructor(name)(data)
+ 
+ 
+@@ -173,72 +185,14 @@ try:
+     algorithms_available = algorithms_available.union(
+             _hashlib.openssl_md_meth_names)
+ except ImportError:
++    if get_fips_mode:
++        raise
+     new = __py_new
+     __get_hash = __get_builtin_constructor
+ 
+-try:
+-    # OpenSSL's PKCS5_PBKDF2_HMAC requires OpenSSL 1.0+ with HMAC and SHA
+-    from _hashlib import pbkdf2_hmac
+-except ImportError:
+-    _trans_5C = bytes((x ^ 0x5C) for x in range(256))
+-    _trans_36 = bytes((x ^ 0x36) for x in range(256))
+-
+-    def pbkdf2_hmac(hash_name, password, salt, iterations, dklen=None):
+-        """Password based key derivation function 2 (PKCS #5 v2.0)
+ 
+-        This Python implementations based on the hmac module about as fast
+-        as OpenSSL's PKCS5_PBKDF2_HMAC for short passwords and much faster
+-        for long passwords.
+-        """
+-        if not isinstance(hash_name, str):
+-            raise TypeError(hash_name)
+-
+-        if not isinstance(password, (bytes, bytearray)):
+-            password = bytes(memoryview(password))
+-        if not isinstance(salt, (bytes, bytearray)):
+-            salt = bytes(memoryview(salt))
+-
+-        # Fast inline HMAC implementation
+-        inner = new(hash_name)
+-        outer = new(hash_name)
+-        blocksize = getattr(inner, 'block_size', 64)
+-        if len(password) > blocksize:
+-            password = new(hash_name, password).digest()
+-        password = password + b'\x00' * (blocksize - len(password))
+-        inner.update(password.translate(_trans_36))
+-        outer.update(password.translate(_trans_5C))
+-
+-        def prf(msg, inner=inner, outer=outer):
+-            # PBKDF2_HMAC uses the password as key. We can re-use the same
+-            # digest objects and just update copies to skip initialization.
+-            icpy = inner.copy()
+-            ocpy = outer.copy()
+-            icpy.update(msg)
+-            ocpy.update(icpy.digest())
+-            return ocpy.digest()
+-
+-        if iterations < 1:
+-            raise ValueError(iterations)
+-        if dklen is None:
+-            dklen = outer.digest_size
+-        if dklen < 1:
+-            raise ValueError(dklen)
+-
+-        dkey = b''
+-        loop = 1
+-        from_bytes = int.from_bytes
+-        while len(dkey) < dklen:
+-            prev = prf(salt + loop.to_bytes(4, 'big'))
+-            # endianness doesn't matter here as long to / from use the same
+-            rkey = int.from_bytes(prev, 'big')
+-            for i in range(iterations - 1):
+-                prev = prf(prev)
+-                # rkey = rkey ^ prev
+-                rkey ^= from_bytes(prev, 'big')
+-            loop += 1
+-            dkey += rkey.to_bytes(inner.digest_size, 'big')
+-
+-        return dkey[:dklen]
++# OpenSSL's PKCS5_PBKDF2_HMAC requires OpenSSL 1.0+ with HMAC and SHA
++from _hashlib import pbkdf2_hmac
+ 
+ try:
+     # OpenSSL's scrypt requires OpenSSL 1.1+
+@@ -259,4 +213,6 @@ for __func_name in __always_supported:
+ 
+ # Cleanup locals()
+ del __always_supported, __func_name, __get_hash
+-del __py_new, __hash_new, __get_openssl_constructor
++del __hash_new, __get_openssl_constructor
++if not get_fips_mode():
++    del __py_new
+diff --git a/Lib/test/test_hashlib.py b/Lib/test/test_hashlib.py
+index 86f31a5..8235505 100644
+--- a/Lib/test/test_hashlib.py
++++ b/Lib/test/test_hashlib.py
+@@ -1039,6 +1039,7 @@ class KDFTests(unittest.TestCase):
+                 iterations=1, dklen=None)
+             self.assertEqual(out, self.pbkdf2_results['sha1'][0][0])
+ 
++    @unittest.skip("The python implementation of pbkdf2_hmac has been removed")
+     @unittest.skipIf(builtin_hashlib is None, "test requires builtin_hashlib")
+     def test_pbkdf2_hmac_py(self):
+         self._test_pbkdf2_hmac(builtin_hashlib.pbkdf2_hmac, builtin_hashes)
+-- 
+2.31.1
+
+
+From 93696af7133bf08fd76fb759b24c7f82b90220da Mon Sep 17 00:00:00 2001
+From: Petr Viktorin <pviktori@redhat.com>
+Date: Thu, 25 Jul 2019 17:19:06 +0200
+Subject: [PATCH 02/13] Disable Python's hash implementations in FIPS mode,
+ forcing OpenSSL
+
+---
+ Include/_hashopenssl.h         | 66 ++++++++++++++++++++++++++++++++++
+ Modules/_blake2/blake2b_impl.c |  5 +++
+ Modules/_blake2/blake2module.c |  3 ++
+ Modules/_blake2/blake2s_impl.c |  5 +++
+ Modules/_hashopenssl.c         | 35 +-----------------
+ setup.py                       | 28 ++++++++++-----
+ 6 files changed, 99 insertions(+), 43 deletions(-)
+ create mode 100644 Include/_hashopenssl.h
+
+diff --git a/Include/_hashopenssl.h b/Include/_hashopenssl.h
+new file mode 100644
+index 0000000..a726c0d
+--- /dev/null
++++ b/Include/_hashopenssl.h
+@@ -0,0 +1,66 @@
++#ifndef Py_HASHOPENSSL_H
++#define Py_HASHOPENSSL_H
++
++#include "Python.h"
++#include <openssl/crypto.h>
++#include <openssl/err.h>
++
++/* LCOV_EXCL_START */
++static PyObject *
++_setException(PyObject *exc)
++{
++    unsigned long errcode;
++    const char *lib, *func, *reason;
++
++    errcode = ERR_peek_last_error();
++    if (!errcode) {
++        PyErr_SetString(exc, "unknown reasons");
++        return NULL;
++    }
++    ERR_clear_error();
++
++    lib = ERR_lib_error_string(errcode);
++    func = ERR_func_error_string(errcode);
++    reason = ERR_reason_error_string(errcode);
++
++    if (lib && func) {
++        PyErr_Format(exc, "[%s: %s] %s", lib, func, reason);
++    }
++    else if (lib) {
++        PyErr_Format(exc, "[%s] %s", lib, reason);
++    }
++    else {
++        PyErr_SetString(exc, reason);
++    }
++    return NULL;
++}
++/* LCOV_EXCL_STOP */
++
++
++__attribute__((__unused__))
++static int
++_Py_hashlib_fips_error(char *name) {
++    int result = FIPS_mode();
++    if (result == 0) {
++        // "If the library was built without support of the FIPS Object Module,
++        // then the function will return 0 with an error code of
++        // CRYPTO_R_FIPS_MODE_NOT_SUPPORTED (0x0f06d065)."
++        // But 0 is also a valid result value.
++
++        unsigned long errcode = ERR_peek_last_error();
++        if (errcode) {
++            _setException(PyExc_ValueError);
++            return 1;
++        }
++        return 0;
++    }
++    PyErr_Format(PyExc_ValueError, "%s is not available in FIPS mode",
++                 name);
++    return 1;
++}
++
++#define FAIL_RETURN_IN_FIPS_MODE(name) do { \
++    if (_Py_hashlib_fips_error(name)) return NULL; \
++} while (0)
++
++#endif  // !Py_HASHOPENSSL_H
+diff --git a/Modules/_blake2/blake2b_impl.c b/Modules/_blake2/blake2b_impl.c
+index 7fb1296..67620af 100644
+--- a/Modules/_blake2/blake2b_impl.c
++++ b/Modules/_blake2/blake2b_impl.c
+@@ -14,6 +14,7 @@
+  */
+ 
+ #include "Python.h"
++#include "_hashopenssl.h"
+ #include "pystrhex.h"
+ 
+ #include "../hashlib.h"
+@@ -96,6 +97,8 @@ py_blake2b_new_impl(PyTypeObject *type, PyObject *data, int digest_size,
+     BLAKE2bObject *self = NULL;
+     Py_buffer buf;
+ 
++    FAIL_RETURN_IN_FIPS_MODE("_blake2");
++
+     self = new_BLAKE2bObject(type);
+     if (self == NULL) {
+         goto error;
+@@ -274,6 +277,8 @@ _blake2_blake2b_update(BLAKE2bObject *self, PyObject *data)
+ {
+     Py_buffer buf;
+ 
++    FAIL_RETURN_IN_FIPS_MODE("_blake2");
++
+     GET_BUFFER_VIEW_OR_ERROUT(data, &buf);
+ 
+     if (self->lock == NULL && buf.len >= HASHLIB_GIL_MINSIZE)
+diff --git a/Modules/_blake2/blake2module.c b/Modules/_blake2/blake2module.c
+index ff142c9..bc67529 100644
+--- a/Modules/_blake2/blake2module.c
++++ b/Modules/_blake2/blake2module.c
+@@ -9,6 +9,7 @@
+  */
+ 
+ #include "Python.h"
++#include "_hashopenssl.h"
+ 
+ #include "impl/blake2.h"
+ 
+@@ -57,6 +58,8 @@ PyInit__blake2(void)
+     PyObject *m;
+     PyObject *d;
+ 
++    FAIL_RETURN_IN_FIPS_MODE("blake2");
++
+     m = PyModule_Create(&blake2_module);
+     if (m == NULL)
+         return NULL;
+diff --git a/Modules/_blake2/blake2s_impl.c b/Modules/_blake2/blake2s_impl.c
+index e3e90d0..57c0f3f 100644
+--- a/Modules/_blake2/blake2s_impl.c
++++ b/Modules/_blake2/blake2s_impl.c
+@@ -14,6 +14,7 @@
+  */
+ 
+ #include "Python.h"
++#include "_hashopenssl.h"
+ #include "pystrhex.h"
+ 
+ #include "../hashlib.h"
+@@ -96,6 +97,8 @@ py_blake2s_new_impl(PyTypeObject *type, PyObject *data, int digest_size,
+     BLAKE2sObject *self = NULL;
+     Py_buffer buf;
+ 
++    FAIL_RETURN_IN_FIPS_MODE("_blake2");
++
+     self = new_BLAKE2sObject(type);
+     if (self == NULL) {
+         goto error;
+@@ -274,6 +277,8 @@ _blake2_blake2s_update(BLAKE2sObject *self, PyObject *data)
+ {
+     Py_buffer buf;
+ 
++    FAIL_RETURN_IN_FIPS_MODE("_blake2");
++
+     GET_BUFFER_VIEW_OR_ERROUT(data, &buf);
+ 
+     if (self->lock == NULL && buf.len >= HASHLIB_GIL_MINSIZE)
+diff --git a/Modules/_hashopenssl.c b/Modules/_hashopenssl.c
+index ff3a1ae..3d788f5 100644
+--- a/Modules/_hashopenssl.c
++++ b/Modules/_hashopenssl.c
+@@ -23,6 +23,7 @@
+ #include "Python.h"
+ #include "hashlib.h"
+ #include "pystrhex.h"
++#include "_hashopenssl.h"
+ 
+ /* EVP is the preferred interface to hashing in OpenSSL */
+ #include <openssl/evp.h>
+@@ -30,9 +31,6 @@
+ #include <openssl/crypto.h>
+ /* We use the object interface to discover what hashes OpenSSL supports. */
+ #include <openssl/objects.h>
+-#include <openssl/err.h>
+-
+-#include <openssl/crypto.h>       // FIPS_mode()
+ 
+ #ifndef OPENSSL_THREADS
+ #  error "OPENSSL_THREADS is not defined, Python requires thread-safe OpenSSL"
+@@ -124,37 +122,6 @@ class _hashlib.HMAC "HMACobject *" "((_hashlibstate *)PyModule_GetState(module))
+ /*[clinic end generated code: output=da39a3ee5e6b4b0d input=7df1bcf6f75cb8ef]*/
+ 
+ 
+-/* LCOV_EXCL_START */
+-static PyObject *
+-_setException(PyObject *exc)
+-{
+-    unsigned long errcode;
+-    const char *lib, *func, *reason;
+-
+-    errcode = ERR_peek_last_error();
+-    if (!errcode) {
+-        PyErr_SetString(exc, "unknown reasons");
+-        return NULL;
+-    }
+-    ERR_clear_error();
+-
+-    lib = ERR_lib_error_string(errcode);
+-    func = ERR_func_error_string(errcode);
+-    reason = ERR_reason_error_string(errcode);
+-
+-    if (lib && func) {
+-        PyErr_Format(exc, "[%s: %s] %s", lib, func, reason);
+-    }
+-    else if (lib) {
+-        PyErr_Format(exc, "[%s] %s", lib, reason);
+-    }
+-    else {
+-        PyErr_SetString(exc, reason);
+-    }
+-    return NULL;
+-}
+-/* LCOV_EXCL_STOP */
+-
+ /* {Py_tp_new, NULL} doesn't block __new__ */
+ static PyObject *
+ _disabled_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+diff --git a/setup.py b/setup.py
+index 04eb6b2..f72d7ca 100644
+--- a/setup.py
++++ b/setup.py
+@@ -2306,7 +2306,7 @@ class PyBuildExt(build_ext):
+                            sources=sources,
+                            depends=depends))
+ 
+-    def detect_openssl_hashlib(self):
++    def detect_openssl_args(self):
+         # Detect SSL support for the socket module (via _ssl)
+         config_vars = sysconfig.get_config_vars()
+ 
+@@ -2327,7 +2327,7 @@ class PyBuildExt(build_ext):
+         if not openssl_libs:
+             # libssl and libcrypto not found
+             self.missing.extend(['_ssl', '_hashlib'])
+-            return None, None
++            raise ValueError('Cannot build for RHEL without OpenSSL')
+ 
+         # Find OpenSSL includes
+         ssl_incs = find_file(
+@@ -2335,7 +2335,7 @@ class PyBuildExt(build_ext):
+         )
+         if ssl_incs is None:
+             self.missing.extend(['_ssl', '_hashlib'])
+-            return None, None
++            raise ValueError('Cannot build for RHEL without OpenSSL')
+ 
+         # OpenSSL 1.0.2 uses Kerberos for KRB5 ciphers
+         krb5_h = find_file(
+@@ -2345,12 +2345,23 @@ class PyBuildExt(build_ext):
+         if krb5_h:
+             ssl_incs.extend(krb5_h)
+ 
++
++        ssl_args = {
++            'include_dirs': openssl_includes,
++            'library_dirs': openssl_libdirs,
++            'libraries': ['ssl', 'crypto'],
++        }
++
++        return ssl_args
++
++    def detect_openssl_hashlib(self):
++
++        config_vars = sysconfig.get_config_vars()
++
+         if config_vars.get("HAVE_X509_VERIFY_PARAM_SET1_HOST"):
+             self.add(Extension(
+                 '_ssl', ['_ssl.c'],
+-                include_dirs=openssl_includes,
+-                library_dirs=openssl_libdirs,
+-                libraries=openssl_libs,
++                **self.detect_openssl_args(),
+                 depends=[
+                     'socketmodule.h',
+                     '_ssl/debughelpers.c',
+@@ -2363,9 +2374,7 @@ class PyBuildExt(build_ext):
+ 
+         self.add(Extension('_hashlib', ['_hashopenssl.c'],
+                            depends=['hashlib.h'],
+-                           include_dirs=openssl_includes,
+-                           library_dirs=openssl_libdirs,
+-                           libraries=openssl_libs))
++                           **self.detect_openssl_args()) )
+ 
+     def detect_hash_builtins(self):
+         # By default we always compile these even when OpenSSL is available
+@@ -2422,6 +2431,7 @@ class PyBuildExt(build_ext):
+                     '_blake2/blake2b_impl.c',
+                     '_blake2/blake2s_impl.c'
+                 ],
++                **self.detect_openssl_args(),
+                 depends=blake2_deps
+             ))
+ 
+-- 
+2.31.1
+
+
+From 0b9b72c27e24e159ed3180e9a7a2a9efa24de7e8 Mon Sep 17 00:00:00 2001
+From: Charalampos Stratakis <cstratak@redhat.com>
+Date: Thu, 12 Dec 2019 16:58:31 +0100
+Subject: [PATCH 03/13] Expose all hashes available to OpenSSL
+
+---
+ Include/_hashopenssl.h          |  11 ++--
+ Modules/_blake2/blake2b_impl.c  |   4 +-
+ Modules/_blake2/blake2module.c  |   2 +-
+ Modules/_blake2/blake2s_impl.c  |   4 +-
+ Modules/_hashopenssl.c          |  43 +++++++++++++
+ Modules/clinic/_hashopenssl.c.h | 106 +++++++++++++++++++++++++++++++-
+ 6 files changed, 158 insertions(+), 12 deletions(-)
+
+diff --git a/Include/_hashopenssl.h b/Include/_hashopenssl.h
+index a726c0d..47ed003 100644
+--- a/Include/_hashopenssl.h
++++ b/Include/_hashopenssl.h
+@@ -39,7 +39,7 @@ _setException(PyObject *exc)
+ 
+ __attribute__((__unused__))
+ static int
+-_Py_hashlib_fips_error(char *name) {
++_Py_hashlib_fips_error(PyObject *exc, char *name) {
+     int result = FIPS_mode();
+     if (result == 0) {
+         // "If the library was built without support of the FIPS Object Module,
+@@ -49,18 +49,17 @@ _Py_hashlib_fips_error(char *name) {
+ 
+         unsigned long errcode = ERR_peek_last_error();
+         if (errcode) {
+-            _setException(PyExc_ValueError);
++            _setException(exc);
+             return 1;
+         }
+         return 0;
+     }
+-    PyErr_Format(PyExc_ValueError, "%s is not available in FIPS mode",
+-                 name);
++    PyErr_Format(exc, "%s is not available in FIPS mode", name);
+     return 1;
+ }
+ 
+-#define FAIL_RETURN_IN_FIPS_MODE(name) do { \
+-    if (_Py_hashlib_fips_error(name)) return NULL; \
++#define FAIL_RETURN_IN_FIPS_MODE(exc, name) do { \
++    if (_Py_hashlib_fips_error(exc, name)) return NULL; \
+ } while (0)
+ 
+ #endif  // !Py_HASHOPENSSL_H
+diff --git a/Modules/_blake2/blake2b_impl.c b/Modules/_blake2/blake2b_impl.c
+index 67620af..9e125dc 100644
+--- a/Modules/_blake2/blake2b_impl.c
++++ b/Modules/_blake2/blake2b_impl.c
+@@ -97,7 +97,7 @@ py_blake2b_new_impl(PyTypeObject *type, PyObject *data, int digest_size,
+     BLAKE2bObject *self = NULL;
+     Py_buffer buf;
+ 
+-    FAIL_RETURN_IN_FIPS_MODE("_blake2");
++    FAIL_RETURN_IN_FIPS_MODE(PyExc_ValueError, "_blake2");
+ 
+     self = new_BLAKE2bObject(type);
+     if (self == NULL) {
+@@ -277,7 +277,7 @@ _blake2_blake2b_update(BLAKE2bObject *self, PyObject *data)
+ {
+     Py_buffer buf;
+ 
+-    FAIL_RETURN_IN_FIPS_MODE("_blake2");
++    FAIL_RETURN_IN_FIPS_MODE(PyExc_ValueError, "_blake2");
+ 
+     GET_BUFFER_VIEW_OR_ERROUT(data, &buf);
+ 
+diff --git a/Modules/_blake2/blake2module.c b/Modules/_blake2/blake2module.c
+index bc67529..79a9eed 100644
+--- a/Modules/_blake2/blake2module.c
++++ b/Modules/_blake2/blake2module.c
+@@ -58,7 +58,7 @@ PyInit__blake2(void)
+     PyObject *m;
+     PyObject *d;
+ 
+-    FAIL_RETURN_IN_FIPS_MODE("blake2");
++    FAIL_RETURN_IN_FIPS_MODE(PyExc_ImportError, "blake2");
+ 
+     m = PyModule_Create(&blake2_module);
+     if (m == NULL)
+diff --git a/Modules/_blake2/blake2s_impl.c b/Modules/_blake2/blake2s_impl.c
+index 57c0f3f..b59624d 100644
+--- a/Modules/_blake2/blake2s_impl.c
++++ b/Modules/_blake2/blake2s_impl.c
+@@ -97,7 +97,7 @@ py_blake2s_new_impl(PyTypeObject *type, PyObject *data, int digest_size,
+     BLAKE2sObject *self = NULL;
+     Py_buffer buf;
+ 
+-    FAIL_RETURN_IN_FIPS_MODE("_blake2");
++    FAIL_RETURN_IN_FIPS_MODE(PyExc_ValueError, "_blake2");
+ 
+     self = new_BLAKE2sObject(type);
+     if (self == NULL) {
+@@ -277,7 +277,7 @@ _blake2_blake2s_update(BLAKE2sObject *self, PyObject *data)
+ {
+     Py_buffer buf;
+ 
+-    FAIL_RETURN_IN_FIPS_MODE("_blake2");
++    FAIL_RETURN_IN_FIPS_MODE(PyExc_ValueError, "_blake2");
+ 
+     GET_BUFFER_VIEW_OR_ERROUT(data, &buf);
+ 
+diff --git a/Modules/_hashopenssl.c b/Modules/_hashopenssl.c
+index 3d788f5..dc130f6 100644
+--- a/Modules/_hashopenssl.c
++++ b/Modules/_hashopenssl.c
+@@ -259,6 +259,12 @@ py_digest_by_name(const char *name)
+         else if (!strcmp(name, "blake2b512")) {
+             digest = EVP_blake2b512();
+         }
++        else if (!strcmp(name, "blake2s")) {
++            digest = EVP_blake2s256();
++        }
++        else if (!strcmp(name, "blake2b")) {
++            digest = EVP_blake2b512();
++        }
+ #endif
+     }
+ 
+@@ -952,6 +958,41 @@ _hashlib_openssl_sha512_impl(PyObject *module, PyObject *data_obj,
+ }
+ 
+ 
++/*[clinic input]
++_hashlib.openssl_blake2b
++    string as data_obj: object(py_default="b''") = NULL
++    *
++    usedforsecurity: bool = True
++Returns a blake2b hash object; optionally initialized with a string
++[clinic start generated code]*/
++
++static PyObject *
++_hashlib_openssl_blake2b_impl(PyObject *module, PyObject *data_obj,
++                              int usedforsecurity)
++/*[clinic end generated code: output=7a838b1643cde13e input=4ad7fd54268f3689]*/
++
++{
++    return EVP_fast_new(module, data_obj, EVP_blake2b512(), usedforsecurity);
++}
++
++/*[clinic input]
++_hashlib.openssl_blake2s
++    string as data_obj: object(py_default="b''") = NULL
++    *
++    usedforsecurity: bool = True
++Returns a blake2s hash object; optionally initialized with a string
++[clinic start generated code]*/
++
++static PyObject *
++_hashlib_openssl_blake2s_impl(PyObject *module, PyObject *data_obj,
++                              int usedforsecurity)
++/*[clinic end generated code: output=4eda6b40757471da input=1ed39481ffa4e26a]*/
++
++{
++    return EVP_fast_new(module, data_obj, EVP_blake2s256(), usedforsecurity);
++}
++
++
+ #ifdef PY_OPENSSL_HAS_SHA3
+ 
+ /*[clinic input]
+@@ -1938,6 +1979,8 @@ static struct PyMethodDef EVP_functions[] = {
+     _HASHLIB_OPENSSL_SHA256_METHODDEF
+     _HASHLIB_OPENSSL_SHA384_METHODDEF
+     _HASHLIB_OPENSSL_SHA512_METHODDEF
++    _HASHLIB_OPENSSL_BLAKE2B_METHODDEF
++    _HASHLIB_OPENSSL_BLAKE2S_METHODDEF
+     _HASHLIB_OPENSSL_SHA3_224_METHODDEF
+     _HASHLIB_OPENSSL_SHA3_256_METHODDEF
+     _HASHLIB_OPENSSL_SHA3_384_METHODDEF
+diff --git a/Modules/clinic/_hashopenssl.c.h b/Modules/clinic/_hashopenssl.c.h
+index 68aa765..2957ae2 100644
+--- a/Modules/clinic/_hashopenssl.c.h
++++ b/Modules/clinic/_hashopenssl.c.h
+@@ -540,6 +540,110 @@ exit:
+     return return_value;
+ }
+ 
++PyDoc_STRVAR(_hashlib_openssl_blake2b__doc__,
++"openssl_blake2b($module, /, string=b\'\', *, usedforsecurity=True)\n"
++"--\n"
++"\n"
++"Returns a blake2b hash object; optionally initialized with a string");
++
++#define _HASHLIB_OPENSSL_BLAKE2B_METHODDEF    \
++    {"openssl_blake2b", (PyCFunction)(void(*)(void))_hashlib_openssl_blake2b, METH_FASTCALL|METH_KEYWORDS, _hashlib_openssl_blake2b__doc__},
++
++static PyObject *
++_hashlib_openssl_blake2b_impl(PyObject *module, PyObject *data_obj,
++                              int usedforsecurity);
++
++static PyObject *
++_hashlib_openssl_blake2b(PyObject *module, PyObject *const *args, Py_ssize_t nargs, PyObject *kwnames)
++{
++    PyObject *return_value = NULL;
++    static const char * const _keywords[] = {"string", "usedforsecurity", NULL};
++    static _PyArg_Parser _parser = {NULL, _keywords, "openssl_blake2b", 0};
++    PyObject *argsbuf[2];
++    Py_ssize_t noptargs = nargs + (kwnames ? PyTuple_GET_SIZE(kwnames) : 0) - 0;
++    PyObject *data_obj = NULL;
++    int usedforsecurity = 1;
++
++    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser, 0, 1, 0, argsbuf);
++    if (!args) {
++        goto exit;
++    }
++    if (!noptargs) {
++        goto skip_optional_pos;
++    }
++    if (args[0]) {
++        data_obj = args[0];
++        if (!--noptargs) {
++            goto skip_optional_pos;
++        }
++    }
++skip_optional_pos:
++    if (!noptargs) {
++        goto skip_optional_kwonly;
++    }
++    usedforsecurity = PyObject_IsTrue(args[1]);
++    if (usedforsecurity < 0) {
++        goto exit;
++    }
++skip_optional_kwonly:
++    return_value = _hashlib_openssl_blake2b_impl(module, data_obj, usedforsecurity);
++
++exit:
++    return return_value;
++}
++
++PyDoc_STRVAR(_hashlib_openssl_blake2s__doc__,
++"openssl_blake2s($module, /, string=b\'\', *, usedforsecurity=True)\n"
++"--\n"
++"\n"
++"Returns a blake2s hash object; optionally initialized with a string");
++
++#define _HASHLIB_OPENSSL_BLAKE2S_METHODDEF    \
++    {"openssl_blake2s", (PyCFunction)(void(*)(void))_hashlib_openssl_blake2s, METH_FASTCALL|METH_KEYWORDS, _hashlib_openssl_blake2s__doc__},
++
++static PyObject *
++_hashlib_openssl_blake2s_impl(PyObject *module, PyObject *data_obj,
++                              int usedforsecurity);
++
++static PyObject *
++_hashlib_openssl_blake2s(PyObject *module, PyObject *const *args, Py_ssize_t nargs, PyObject *kwnames)
++{
++    PyObject *return_value = NULL;
++    static const char * const _keywords[] = {"string", "usedforsecurity", NULL};
++    static _PyArg_Parser _parser = {NULL, _keywords, "openssl_blake2s", 0};
++    PyObject *argsbuf[2];
++    Py_ssize_t noptargs = nargs + (kwnames ? PyTuple_GET_SIZE(kwnames) : 0) - 0;
++    PyObject *data_obj = NULL;
++    int usedforsecurity = 1;
++
++    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser, 0, 1, 0, argsbuf);
++    if (!args) {
++        goto exit;
++    }
++    if (!noptargs) {
++        goto skip_optional_pos;
++    }
++    if (args[0]) {
++        data_obj = args[0];
++        if (!--noptargs) {
++            goto skip_optional_pos;
++        }
++    }
++skip_optional_pos:
++    if (!noptargs) {
++        goto skip_optional_kwonly;
++    }
++    usedforsecurity = PyObject_IsTrue(args[1]);
++    if (usedforsecurity < 0) {
++        goto exit;
++    }
++skip_optional_kwonly:
++    return_value = _hashlib_openssl_blake2s_impl(module, data_obj, usedforsecurity);
++
++exit:
++    return return_value;
++}
++
+ #if defined(PY_OPENSSL_HAS_SHA3)
+ 
+ PyDoc_STRVAR(_hashlib_openssl_sha3_224__doc__,
+@@ -1442,4 +1546,4 @@ exit:
+ #ifndef _HASHLIB_GET_FIPS_MODE_METHODDEF
+     #define _HASHLIB_GET_FIPS_MODE_METHODDEF
+ #endif /* !defined(_HASHLIB_GET_FIPS_MODE_METHODDEF) */
+-/*[clinic end generated code: output=b6b280e46bf0b139 input=a9049054013a1b77]*/
++/*[clinic end generated code: output=4f8cc45bf0337f8e input=a9049054013a1b77]*/
+-- 
+2.31.1
+
+
+From 23e9a37ced6523d2e15c97f716d4dcb6605b1b9a Mon Sep 17 00:00:00 2001
+From: Petr Viktorin <pviktori@redhat.com>
+Date: Thu, 25 Jul 2019 18:13:45 +0200
+Subject: [PATCH 04/13] Fix tests
+
+---
+ Lib/test/test_hashlib.py | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/Lib/test/test_hashlib.py b/Lib/test/test_hashlib.py
+index 8235505..a838bce 100644
+--- a/Lib/test/test_hashlib.py
++++ b/Lib/test/test_hashlib.py
+@@ -354,6 +354,11 @@ class HashLibTestCase(unittest.TestCase):
+         # 2 is for hashlib.name(...) and hashlib.new(name, ...)
+         self.assertGreaterEqual(len(constructors), 2)
+         for hash_object_constructor in constructors:
++            if (
++                kwargs
++                and hash_object_constructor.__name__.startswith('openssl_')
++            ):
++                return
+             m = hash_object_constructor(data, **kwargs)
+             computed = m.hexdigest() if not shake else m.hexdigest(length)
+             self.assertEqual(
+-- 
+2.31.1
+
+
+From 20828756a8df0a693b09167d03bf2724bcfddc51 Mon Sep 17 00:00:00 2001
+From: Petr Viktorin <pviktori@redhat.com>
+Date: Fri, 26 Jul 2019 15:41:10 +0200
+Subject: [PATCH 05/13] Implement hmac.new using new built-in module,
+ _hmacopenssl
+
+Make _hmacopenssl.HMAC subclassable; subclass it as hmac.HMAC under FIPS
+
+This removes the _hmacopenssl.new function.
+---
+ Lib/hmac.py                     |  37 +++
+ Lib/test/test_hmac.py           |  28 ++
+ Modules/_hmacopenssl.c          | 459 ++++++++++++++++++++++++++++++++
+ Modules/clinic/_hmacopenssl.c.h | 104 ++++++++
+ setup.py                        |   4 +
+ 5 files changed, 632 insertions(+)
+ create mode 100644 Modules/_hmacopenssl.c
+ create mode 100644 Modules/clinic/_hmacopenssl.c.h
+
+diff --git a/Lib/hmac.py b/Lib/hmac.py
+index 180bc37..482e443 100644
+--- a/Lib/hmac.py
++++ b/Lib/hmac.py
+@@ -14,6 +14,8 @@ else:
+     _openssl_md_meths = frozenset(_hashopenssl.openssl_md_meth_names)
+     compare_digest = _hashopenssl.compare_digest
+ import hashlib as _hashlib
++import _hashlib as _hashlibopenssl
++import _hmacopenssl
+ 
+ trans_5C = bytes((x ^ 0x5C) for x in range(256))
+ trans_36 = bytes((x ^ 0x36) for x in range(256))
+@@ -48,6 +50,11 @@ class HMAC:
+                    msg argument.  Passing it as a keyword argument is
+                    recommended, though not required for legacy API reasons.
+         """
++        if _hashlib.get_fips_mode():
++            raise ValueError(
++                'This class is not available in FIPS mode. '
++                + 'Use hmac.new().'
++            )
+ 
+         if not isinstance(key, (bytes, bytearray)):
+             raise TypeError("key: expected bytes or bytearray, but got %r" % type(key).__name__)
+@@ -110,6 +117,8 @@ class HMAC:
+ 
+     def update(self, msg):
+         """Feed data from msg into this hashing object."""
++        if _hashlib.get_fips_mode():
++            raise ValueError('hmac.HMAC is not available in FIPS mode')
+         self._inner.update(msg)
+ 
+     def copy(self):
+@@ -150,6 +159,34 @@ class HMAC:
+         h = self._current()
+         return h.hexdigest()
+ 
++def _get_openssl_name(digestmod):
++    if isinstance(digestmod, str):
++        return digestmod.lower()
++    elif callable(digestmod):
++        digestmod = digestmod(b'')
++
++    if not isinstance(digestmod, _hashlibopenssl.HASH):
++        raise TypeError(
++            'Only OpenSSL hashlib hashes are accepted in FIPS mode.')
++
++    return digestmod.name.lower().replace('_', '-')
++
++class HMAC_openssl(_hmacopenssl.HMAC):
++    def __new__(cls, key, msg = None, digestmod = None):
++        if not isinstance(key, (bytes, bytearray)):
++            raise TypeError("key: expected bytes or bytearray, but got %r" % type(key).__name__)
++
++        name = _get_openssl_name(digestmod)
++        result = _hmacopenssl.HMAC.__new__(cls, key, digestmod=name)
++        if msg:
++            result.update(msg)
++        return result
++
++
++if _hashlib.get_fips_mode():
++    HMAC = HMAC_openssl
++
++
+ def new(key, msg=None, digestmod=''):
+     """Create a new hashing object and return it.
+ 
+diff --git a/Lib/test/test_hmac.py b/Lib/test/test_hmac.py
+index 6daf22c..544ec7c 100644
+--- a/Lib/test/test_hmac.py
++++ b/Lib/test/test_hmac.py
+@@ -322,6 +322,7 @@ class TestVectorsTestCase(unittest.TestCase):
+     def test_sha512_rfc4231(self):
+         self._rfc4231_test_cases(hashlib.sha512, 'sha512', 64, 128)
+ 
++    @unittest.skipIf(hashlib.get_fips_mode(), 'MockCrazyHash unacceptable in FIPS mode.')
+     @hashlib_helper.requires_hashdigest('sha256')
+     def test_legacy_block_size_warnings(self):
+         class MockCrazyHash(object):
+@@ -371,6 +372,14 @@ class ConstructorTestCase(unittest.TestCase):
+         except Exception:
+             self.fail("Standard constructor call raised exception.")
+ 
++    def test_normal_digestmod(self):
++        # Standard constructor call.
++        failed = 0
++        try:
++            h = hmac.HMAC(b"key", digestmod='sha1')
++        except Exception:
++            self.fail("Standard constructor call raised exception.")
++
+     @hashlib_helper.requires_hashdigest('sha256')
+     def test_with_str_key(self):
+         # Pass a key of type str, which is an error, because it expects a key
+@@ -446,6 +455,7 @@ class SanityTestCase(unittest.TestCase):
+ 
+ class CopyTestCase(unittest.TestCase):
+ 
++    @unittest.skipIf(hashlib.get_fips_mode(), "Internal attributes unavailable in FIPS mode")
+     @hashlib_helper.requires_hashdigest('sha256')
+     def test_attributes(self):
+         # Testing if attributes are of same type.
+@@ -458,6 +468,8 @@ class CopyTestCase(unittest.TestCase):
+         self.assertEqual(type(h1._outer), type(h2._outer),
+             "Types of outer don't match.")
+ 
++
++    @unittest.skipIf(hashlib.get_fips_mode(), "Internal attributes unavailable in FIPS mode")
+     @hashlib_helper.requires_hashdigest('sha256')
+     def test_realcopy(self):
+         # Testing if the copy method created a real copy.
+@@ -473,6 +485,7 @@ class CopyTestCase(unittest.TestCase):
+         self.assertEqual(h1._outer, h1.outer)
+         self.assertEqual(h1._digest_cons, h1.digest_cons)
+ 
++    @unittest.skipIf(hashlib.get_fips_mode(), "Internal attributes unavailable in FIPS mode")
+     @hashlib_helper.requires_hashdigest('sha256')
+     def test_properties(self):
+         # deprecated properties
+@@ -481,6 +494,21 @@ class CopyTestCase(unittest.TestCase):
+         self.assertEqual(h1._outer, h1.outer)
+         self.assertEqual(h1._digest_cons, h1.digest_cons)
+ 
++    def test_realcopy_by_digest(self):
++        # Testing if the copy method created a real copy.
++        h1 = hmac.HMAC(b"key", digestmod="sha1")
++        h2 = h1.copy()
++        # Using id() in case somebody has overridden __eq__/__ne__.
++        self.assertTrue(id(h1) != id(h2), "No real copy of the HMAC instance.")
++        old_digest = h1.digest()
++        assert h1.digest() == h2.digest()
++        h1.update(b'hi')
++        assert h1.digest() != h2.digest()
++        assert h2.digest() == old_digest
++        new_digest = h1.digest()
++        h2.update(b'hi')
++        assert h1.digest() == h2.digest() == new_digest
++
+     @hashlib_helper.requires_hashdigest('sha256')
+     def test_equality(self):
+         # Testing if the copy has the same digests.
+diff --git a/Modules/_hmacopenssl.c b/Modules/_hmacopenssl.c
+new file mode 100644
+index 0000000..c31d233
+--- /dev/null
++++ b/Modules/_hmacopenssl.c
+@@ -0,0 +1,459 @@
++/* Module that wraps all OpenSSL MHAC algorithm */
++
++/* Copyright (C) 2019 Red Hat, Inc. Red Hat, Inc. and/or its affiliates
++ *
++ * Based on _hashopenssl.c, which is:
++ * Copyright (C) 2005-2010   Gregory P. Smith (greg@krypto.org)
++ * Licensed to PSF under a Contributor Agreement.
++ *
++ * Derived from a skeleton of shamodule.c containing work performed by:
++ *
++ * Andrew Kuchling (amk@amk.ca)
++ * Greg Stein (gstein@lyra.org)
++ *
++ */
++
++#define PY_SSIZE_T_CLEAN
++
++#include "Python.h"
++#include "structmember.h"
++#include "hashlib.h"
++#include "pystrhex.h"
++#include "_hashopenssl.h"
++
++
++
++typedef struct hmacopenssl_state {
++    PyTypeObject *HmacType;
++} hmacopenssl_state;
++
++#include <openssl/hmac.h>
++
++typedef struct {
++    PyObject_HEAD
++    PyObject *name;  /* name of the hash algorithm */
++    HMAC_CTX *ctx;   /* OpenSSL hmac context */
++    PyThread_type_lock lock;  /* HMAC context lock */
++} HmacObject;
++
++#include "clinic/_hmacopenssl.c.h"
++/*[clinic input]
++module _hmacopenssl
++class _hmacopenssl.HMAC "HmacObject *" "((hmacopenssl_state *)PyModule_GetState(module))->HmacType"
++[clinic start generated code]*/
++/*[clinic end generated code: output=da39a3ee5e6b4b0d input=9fe07a087adc2cf9]*/
++
++
++static PyObject *
++Hmac_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
++{
++    static char *kwarg_names[] = {"key", "digestmod", NULL};
++    Py_buffer key = {NULL, NULL};
++    char *digestmod = NULL;
++
++    int ret = PyArg_ParseTupleAndKeywords(
++        args, kwds, "y*|$s:_hmacopenssl.HMAC", kwarg_names,
++        &key, &digestmod);
++    if (ret == 0) {
++        return NULL;
++    }
++
++    if (digestmod == NULL) {
++        PyErr_SetString(PyExc_ValueError, "digestmod must be specified");
++        return NULL;
++    }
++
++    /* name must be lowercase */
++    for (int i=0; digestmod[i]; i++) {
++        if (
++            ((digestmod[i] < 'a') || (digestmod[i] > 'z'))
++            && ((digestmod[i] < '0') || (digestmod[i] > '9'))
++            && digestmod[i] != '-'
++        ) {
++            PyErr_SetString(PyExc_ValueError, "digestmod must be lowercase");
++            return NULL;
++        }
++    }
++
++    const EVP_MD *digest = EVP_get_digestbyname(digestmod);
++    if (!digest) {
++        PyErr_SetString(PyExc_ValueError, "unknown hash function");
++        return NULL;
++    }
++
++    PyObject *name = NULL;
++    HMAC_CTX *ctx = NULL;
++    HmacObject *retval = NULL;
++
++    name = PyUnicode_FromFormat("hmac-%s", digestmod);
++    if (name == NULL) {
++        goto error;
++    }
++
++    ctx = HMAC_CTX_new();
++    if (ctx == NULL) {
++        _setException(PyExc_ValueError);
++        goto error;
++    }
++
++    int r = HMAC_Init_ex(
++        ctx,
++        (const char*)key.buf,
++        key.len,
++        digest,
++        NULL /*impl*/);
++    if (r == 0) {
++        _setException(PyExc_ValueError);
++        goto error;
++    }
++
++    PyBuffer_Release(&key);
++    key.buf = NULL;
++
++    retval = (HmacObject *)subtype->tp_alloc(subtype, 0);
++    if (retval == NULL) {
++        goto error;
++    }
++
++    retval->name = name;
++    retval->ctx = ctx;
++    retval->lock = NULL;
++
++    return (PyObject*)retval;
++
++error:
++    if (ctx) HMAC_CTX_free(ctx);
++    if (name) Py_DECREF(name);
++    if (retval) PyObject_Del(name);
++    if (key.buf) PyBuffer_Release(&key);
++    return NULL;
++}
++
++/*[clinic input]
++_hmacopenssl.HMAC.copy
++
++Return a copy (“clone”) of the HMAC object.
++[clinic start generated code]*/
++
++static PyObject *
++_hmacopenssl_HMAC_copy_impl(HmacObject *self)
++/*[clinic end generated code: output=fe5ee41faf30dcf0 input=f5ed20feec42d8d0]*/
++{
++    HmacObject *retval;
++
++    HMAC_CTX *ctx = HMAC_CTX_new();
++    if (ctx == NULL) {
++        return _setException(PyExc_ValueError);
++    }
++
++    int r = HMAC_CTX_copy(ctx, self->ctx);
++    if (r == 0) {
++        HMAC_CTX_free(ctx);
++        return _setException(PyExc_ValueError);
++    }
++
++    retval = (HmacObject *)Py_TYPE(self)->tp_alloc(Py_TYPE(self), 0);
++    if (retval == NULL) {
++        HMAC_CTX_free(ctx);
++        return NULL;
++    }
++    retval->ctx = ctx;
++    Py_INCREF(self->name);
++    retval->name = self->name;
++
++    retval->lock = NULL;
++
++    return (PyObject *)retval;
++}
++
++static void
++_hmac_dealloc(HmacObject *self)
++{
++    if (self->lock != NULL) {
++        PyThread_free_lock(self->lock);
++    }
++    HMAC_CTX_free(self->ctx);
++    Py_CLEAR(self->name);
++    Py_TYPE(self)->tp_free(self);
++}
++
++static PyObject *
++_hmac_repr(HmacObject *self)
++{
++    return PyUnicode_FromFormat("<%U HMAC object @ %p>", self->name, self);
++}
++
++/*[clinic input]
++_hmacopenssl.HMAC.update
++
++    msg: Py_buffer
++
++Update the HMAC object with msg.
++[clinic start generated code]*/
++
++static PyObject *
++_hmacopenssl_HMAC_update_impl(HmacObject *self, Py_buffer *msg)
++/*[clinic end generated code: output=0efeee663a98cee5 input=0683d64f35808cb9]*/
++{
++    if (self->lock == NULL && msg->len >= HASHLIB_GIL_MINSIZE) {
++        self->lock = PyThread_allocate_lock();
++        /* fail? lock = NULL and we fail over to non-threaded code. */
++    }
++
++    int r;
++
++    if (self->lock != NULL) {
++        Py_BEGIN_ALLOW_THREADS
++        PyThread_acquire_lock(self->lock, 1);
++        r = HMAC_Update(self->ctx, (const unsigned char*)msg->buf, msg->len);
++        PyThread_release_lock(self->lock);
++        Py_END_ALLOW_THREADS
++    } else {
++        r = HMAC_Update(self->ctx, (const unsigned char*)msg->buf, msg->len);
++    }
++
++    if (r == 0) {
++        _setException(PyExc_ValueError);
++        return NULL;
++    }
++    Py_RETURN_NONE;
++}
++
++static unsigned int
++_digest_size(HmacObject *self)
++{
++    const EVP_MD *md = HMAC_CTX_get_md(self->ctx);
++    if (md == NULL) {
++        _setException(PyExc_ValueError);
++        return 0;
++    }
++    return EVP_MD_size(md);
++}
++
++static int
++_digest(HmacObject *self, unsigned char *buf, unsigned int len)
++{
++    HMAC_CTX *temp_ctx = HMAC_CTX_new();
++    if (temp_ctx == NULL) {
++        PyErr_NoMemory();
++        return 0;
++    }
++    int r = HMAC_CTX_copy(temp_ctx, self->ctx);
++    if (r == 0) {
++        _setException(PyExc_ValueError);
++        return 0;
++    }
++    r = HMAC_Final(temp_ctx, buf, &len);
++    HMAC_CTX_free(temp_ctx);
++    if (r == 0) {
++        _setException(PyExc_ValueError);
++        return 0;
++    }
++    return 1;
++}
++
++/*[clinic input]
++_hmacopenssl.HMAC.digest
++
++Return the digest of the bytes passed to the update() method so far.
++[clinic start generated code]*/
++
++static PyObject *
++_hmacopenssl_HMAC_digest_impl(HmacObject *self)
++/*[clinic end generated code: output=3aa6dbfc46ec4957 input=bf769a10b1d9edd9]*/
++{
++    unsigned int digest_size = _digest_size(self);
++    if (digest_size == 0) {
++        return _setException(PyExc_ValueError);
++    }
++    unsigned char buf[digest_size]; /* FIXME: C99 feature */
++    int r = _digest(self, buf, digest_size);
++    if (r == 0) {
++        return NULL;
++    }
++    return PyBytes_FromStringAndSize((const char *)buf, digest_size);
++}
++
++/*[clinic input]
++_hmacopenssl.HMAC.hexdigest
++
++Return hexadecimal digest of the bytes passed to the update() method so far.
++
++This may be used to exchange the value safely in email or other non-binary
++environments.
++[clinic start generated code]*/
++
++static PyObject *
++_hmacopenssl_HMAC_hexdigest_impl(HmacObject *self)
++/*[clinic end generated code: output=630f6fa89f9f1e48 input=b8e60ec8b811c4cd]*/
++{
++    unsigned int digest_size = _digest_size(self);
++    if (digest_size == 0) {
++        return _setException(PyExc_ValueError);
++    }
++    unsigned char buf[digest_size]; /* FIXME: C99 feature */
++    int r = _digest(self, buf, digest_size);
++    if (r == 0) {
++        return NULL;
++    }
++    return _Py_strhex((const char *)buf, digest_size);
++}
++
++
++
++static PyObject *
++_hmacopenssl_get_digest_size(HmacObject *self, void *closure)
++{
++    unsigned int digest_size = _digest_size(self);
++    if (digest_size == 0) {
++        return _setException(PyExc_ValueError);
++    }
++    return PyLong_FromLong(digest_size);
++}
++
++static PyObject *
++_hmacopenssl_get_block_size(HmacObject *self, void *closure)
++{
++    const EVP_MD *md = HMAC_CTX_get_md(self->ctx);
++    if (md == NULL) {
++        return _setException(PyExc_ValueError);
++    }
++    return PyLong_FromLong(EVP_MD_block_size(md));
++}
++
++static PyMethodDef Hmac_methods[] = {
++    _HMACOPENSSL_HMAC_UPDATE_METHODDEF
++    _HMACOPENSSL_HMAC_DIGEST_METHODDEF
++    _HMACOPENSSL_HMAC_HEXDIGEST_METHODDEF
++    _HMACOPENSSL_HMAC_COPY_METHODDEF
++    {NULL, NULL}  /* sentinel */
++};
++
++static PyGetSetDef Hmac_getset[] = {
++    {"digest_size", (getter)_hmacopenssl_get_digest_size, NULL, NULL, NULL},
++    {"block_size", (getter)_hmacopenssl_get_block_size, NULL, NULL, NULL},
++    {NULL}  /* Sentinel */
++};
++
++static PyMemberDef Hmac_members[] = {
++    {"name", T_OBJECT, offsetof(HmacObject, name), READONLY, PyDoc_STR("HMAC name")},
++    {NULL} /* Sentinel */
++};
++
++PyDoc_STRVAR(hmactype_doc,
++"The object used to calculate HMAC of a message.\n\
++\n\
++Methods:\n\
++\n\
++update() -- updates the current digest with an additional string\n\
++digest() -- return the current digest value\n\
++hexdigest() -- return the current digest as a string of hexadecimal digits\n\
++copy() -- return a copy of the current hash object\n\
++\n\
++Attributes:\n\
++\n\
++name -- the name, including the hash algorithm used by this object\n\
++digest_size -- number of bytes in digest() output\n");
++
++static PyType_Slot HmacType_slots[] = {
++    {Py_tp_doc, (char*)hmactype_doc},
++    {Py_tp_repr, (reprfunc)_hmac_repr},
++    {Py_tp_dealloc,(destructor)_hmac_dealloc},
++    {Py_tp_methods, Hmac_methods},
++    {Py_tp_getset, Hmac_getset},
++    {Py_tp_members, Hmac_members},
++    {Py_tp_new, Hmac_new},
++    {0, NULL}
++};
++
++PyType_Spec HmacType_spec = {
++    "_hmacopenssl.HMAC",    /* name */
++    sizeof(HmacObject),     /* basicsize */
++    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
++    .slots = HmacType_slots,
++};
++
++
++static int
++hmacopenssl_traverse(PyObject *self, visitproc visit, void *arg)
++{
++    hmacopenssl_state *state;
++
++    state = PyModule_GetState(self);
++
++    if (state) {
++        Py_VISIT(state->HmacType);
++    }
++
++    return 0;
++}
++
++static int
++hmacopenssl_clear(PyObject *self)
++{
++    hmacopenssl_state *state;
++
++    state = PyModule_GetState(self);
++
++    if (state) {
++        Py_CLEAR(state->HmacType);
++    }
++
++    return 0;
++}
++
++
++
++/* Initialize this module. */
++
++static int
++hmacopenssl_exec(PyObject *m) {
++    /* TODO build EVP_functions openssl_* entries dynamically based
++     * on what hashes are supported rather than listing many
++     * and having some unsupported.  Only init appropriate
++     * constants. */
++    PyObject *temp = NULL;
++    hmacopenssl_state *state;
++
++    temp = PyType_FromSpec(&HmacType_spec);
++    if (temp == NULL) {
++        goto fail;
++    }
++
++    if (PyModule_AddObject(m, "HMAC", temp) == -1) {
++        goto fail;
++    }
++
++    state = PyModule_GetState(m);
++
++    state->HmacType = (PyTypeObject *)temp;
++    Py_INCREF(temp);
++
++
++    return 0;
++
++fail:
++    Py_XDECREF(temp);
++    return -1;
++}
++
++static PyModuleDef_Slot hmacopenssl_slots[] = {
++    {Py_mod_exec, hmacopenssl_exec},
++    {0, NULL},
++};
++
++static struct PyModuleDef _hmacopenssl_def = {
++    PyModuleDef_HEAD_INIT,  /* m_base */
++    .m_name = "_hmacopenssl",
++    .m_slots = hmacopenssl_slots,
++    .m_size = sizeof(hmacopenssl_state),
++    .m_traverse = hmacopenssl_traverse,
++    .m_clear = hmacopenssl_clear
++};
++
++
++PyMODINIT_FUNC
++PyInit__hmacopenssl(void)
++{
++    return PyModuleDef_Init(&_hmacopenssl_def);
++}
+diff --git a/Modules/clinic/_hmacopenssl.c.h b/Modules/clinic/_hmacopenssl.c.h
+new file mode 100644
+index 0000000..a2af550
+--- /dev/null
++++ b/Modules/clinic/_hmacopenssl.c.h
+@@ -0,0 +1,104 @@
++/*[clinic input]
++preserve
++[clinic start generated code]*/
++
++PyDoc_STRVAR(_hmacopenssl_HMAC_copy__doc__,
++"copy($self, /)\n"
++"--\n"
++"\n"
++"Return a copy (“clone”) of the HMAC object.");
++
++#define _HMACOPENSSL_HMAC_COPY_METHODDEF    \
++    {"copy", (PyCFunction)_hmacopenssl_HMAC_copy, METH_NOARGS, _hmacopenssl_HMAC_copy__doc__},
++
++static PyObject *
++_hmacopenssl_HMAC_copy_impl(HmacObject *self);
++
++static PyObject *
++_hmacopenssl_HMAC_copy(HmacObject *self, PyObject *Py_UNUSED(ignored))
++{
++    return _hmacopenssl_HMAC_copy_impl(self);
++}
++
++PyDoc_STRVAR(_hmacopenssl_HMAC_update__doc__,
++"update($self, /, msg)\n"
++"--\n"
++"\n"
++"Update the HMAC object with msg.");
++
++#define _HMACOPENSSL_HMAC_UPDATE_METHODDEF    \
++    {"update", (PyCFunction)(void(*)(void))_hmacopenssl_HMAC_update, METH_FASTCALL|METH_KEYWORDS, _hmacopenssl_HMAC_update__doc__},
++
++static PyObject *
++_hmacopenssl_HMAC_update_impl(HmacObject *self, Py_buffer *msg);
++
++static PyObject *
++_hmacopenssl_HMAC_update(HmacObject *self, PyObject *const *args, Py_ssize_t nargs, PyObject *kwnames)
++{
++    PyObject *return_value = NULL;
++    static const char * const _keywords[] = {"msg", NULL};
++    static _PyArg_Parser _parser = {NULL, _keywords, "update", 0};
++    PyObject *argsbuf[1];
++    Py_buffer msg = {NULL, NULL};
++
++    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser, 1, 1, 0, argsbuf);
++    if (!args) {
++        goto exit;
++    }
++    if (PyObject_GetBuffer(args[0], &msg, PyBUF_SIMPLE) != 0) {
++        goto exit;
++    }
++    if (!PyBuffer_IsContiguous(&msg, 'C')) {
++        _PyArg_BadArgument("update", "argument 'msg'", "contiguous buffer", args[0]);
++        goto exit;
++    }
++    return_value = _hmacopenssl_HMAC_update_impl(self, &msg);
++
++exit:
++    /* Cleanup for msg */
++    if (msg.obj) {
++       PyBuffer_Release(&msg);
++    }
++
++    return return_value;
++}
++
++PyDoc_STRVAR(_hmacopenssl_HMAC_digest__doc__,
++"digest($self, /)\n"
++"--\n"
++"\n"
++"Return the digest of the bytes passed to the update() method so far.");
++
++#define _HMACOPENSSL_HMAC_DIGEST_METHODDEF    \
++    {"digest", (PyCFunction)_hmacopenssl_HMAC_digest, METH_NOARGS, _hmacopenssl_HMAC_digest__doc__},
++
++static PyObject *
++_hmacopenssl_HMAC_digest_impl(HmacObject *self);
++
++static PyObject *
++_hmacopenssl_HMAC_digest(HmacObject *self, PyObject *Py_UNUSED(ignored))
++{
++    return _hmacopenssl_HMAC_digest_impl(self);
++}
++
++PyDoc_STRVAR(_hmacopenssl_HMAC_hexdigest__doc__,
++"hexdigest($self, /)\n"
++"--\n"
++"\n"
++"Return hexadecimal digest of the bytes passed to the update() method so far.\n"
++"\n"
++"This may be used to exchange the value safely in email or other non-binary\n"
++"environments.");
++
++#define _HMACOPENSSL_HMAC_HEXDIGEST_METHODDEF    \
++    {"hexdigest", (PyCFunction)_hmacopenssl_HMAC_hexdigest, METH_NOARGS, _hmacopenssl_HMAC_hexdigest__doc__},
++
++static PyObject *
++_hmacopenssl_HMAC_hexdigest_impl(HmacObject *self);
++
++static PyObject *
++_hmacopenssl_HMAC_hexdigest(HmacObject *self, PyObject *Py_UNUSED(ignored))
++{
++    return _hmacopenssl_HMAC_hexdigest_impl(self);
++}
++/*[clinic end generated code: output=e0c910f3c9ed523e input=a9049054013a1b77]*/
+diff --git a/setup.py b/setup.py
+index f72d7ca..11fca20 100644
+--- a/setup.py
++++ b/setup.py
+@@ -2376,6 +2376,10 @@ class PyBuildExt(build_ext):
+                            depends=['hashlib.h'],
+                            **self.detect_openssl_args()) )
+ 
++        self.add(Extension('_hmacopenssl', ['_hmacopenssl.c'],
++                                depends = ['hashlib.h'],
++                                **self.detect_openssl_args()) )
++
+     def detect_hash_builtins(self):
+         # By default we always compile these even when OpenSSL is available
+         # (issue #14693). It's harmless and the object code is tiny
+-- 
+2.31.1
+
+
+From bda4c9de583ee2272812c25d506bea294a54dee8 Mon Sep 17 00:00:00 2001
+From: Petr Viktorin <pviktori@redhat.com>
+Date: Thu, 1 Aug 2019 17:57:05 +0200
+Subject: [PATCH 06/13] Use a stronger hash in multiprocessing handshake
+
+Adapted from patch by David Malcolm,
+https://bugs.python.org/issue17258
+---
+ Lib/multiprocessing/connection.py | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/Lib/multiprocessing/connection.py b/Lib/multiprocessing/connection.py
+index 510e4b5..b68f2fb 100644
+--- a/Lib/multiprocessing/connection.py
++++ b/Lib/multiprocessing/connection.py
+@@ -42,6 +42,10 @@ BUFSIZE = 8192
+ # A very generous timeout when it comes to local connections...
+ CONNECTION_TIMEOUT = 20.
+ 
++# The hmac module implicitly defaults to using MD5.
++# Support using a stronger algorithm for the challenge/response code:
++HMAC_DIGEST_NAME='sha256'
++
+ _mmap_counter = itertools.count()
+ 
+ default_family = 'AF_INET'
+@@ -741,7 +745,7 @@ def deliver_challenge(connection, authkey):
+             "Authkey must be bytes, not {0!s}".format(type(authkey)))
+     message = os.urandom(MESSAGE_LENGTH)
+     connection.send_bytes(CHALLENGE + message)
+-    digest = hmac.new(authkey, message, 'md5').digest()
++    digest = hmac.new(authkey, message, HMAC_DIGEST_NAME).digest()
+     response = connection.recv_bytes(256)        # reject large message
+     if response == digest:
+         connection.send_bytes(WELCOME)
+@@ -757,7 +761,7 @@ def answer_challenge(connection, authkey):
+     message = connection.recv_bytes(256)         # reject large message
+     assert message[:len(CHALLENGE)] == CHALLENGE, 'message = %r' % message
+     message = message[len(CHALLENGE):]
+-    digest = hmac.new(authkey, message, 'md5').digest()
++    digest = hmac.new(authkey, message, HMAC_DIGEST_NAME).digest()
+     connection.send_bytes(digest)
+     response = connection.recv_bytes(256)        # reject large message
+     if response != WELCOME:
+-- 
+2.31.1
+
+
+From 381d423df59d59f953ed817e1611dd929393dea9 Mon Sep 17 00:00:00 2001
+From: Charalampos Stratakis <cstratak@redhat.com>
+Date: Wed, 31 Jul 2019 15:43:43 +0200
+Subject: [PATCH 07/13] Add initial tests for various hashes under FIPS mode
+
+---
+ Lib/test/test_fips.py | 31 +++++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+ create mode 100644 Lib/test/test_fips.py
+
+diff --git a/Lib/test/test_fips.py b/Lib/test/test_fips.py
+new file mode 100644
+index 0000000..fe4ea72
+--- /dev/null
++++ b/Lib/test/test_fips.py
+@@ -0,0 +1,31 @@
++import unittest
++import hmac, _hmacopenssl
++import hashlib, _hashlib
++
++
++
++class HashlibFipsTests(unittest.TestCase):
++
++    @unittest.skipUnless(hashlib.get_fips_mode(), "Test only when FIPS is enabled")
++    def test_fips_imports(self):
++        """blake2s and blake2b should fail to import in FIPS mode
++        """
++        with self.assertRaises(ValueError, msg='blake2s not available in FIPS'):
++            m = hashlib.blake2s()
++        with self.assertRaises(ValueError, msg='blake2b not available in FIPS'):
++            m = hashlib.blake2b()
++
++    @unittest.skipIf(hashlib.get_fips_mode(), "blake2 hashes are not available under FIPS")
++    def test_blake2_hashes(self):
++        self.assertEqual(hashlib.blake2b(b'abc').hexdigest(), _hashlib.openssl_blake2b(b'abc').hexdigest())
++        self.assertEqual(hashlib.blake2s(b'abc').hexdigest(), _hashlib.openssl_blake2s(b'abc').hexdigest())
++
++    def test_hmac_digests(self):
++        self.assertEqual(_hmacopenssl.HMAC(b'My hovercraft is full of eels', digestmod='sha384').hexdigest(),
++                            hmac.new(b'My hovercraft is full of eels', digestmod='sha384').hexdigest())
++
++
++
++
++if __name__ == "__main__":
++    unittest.main()
+-- 
+2.31.1
+
+
+From 31c0ebb0612e0f058a45058b5c92d1cfa672eca2 Mon Sep 17 00:00:00 2001
+From: Petr Viktorin <pviktori@redhat.com>
+Date: Mon, 5 Aug 2019 18:23:57 +0200
+Subject: [PATCH 08/13] Make hashlib tests pass in FIPS mode
+
+---
+ Lib/test/test_hashlib.py | 27 ++++++++++++++++++++++++---
+ 1 file changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/Lib/test/test_hashlib.py b/Lib/test/test_hashlib.py
+index a838bce..6f60ad4 100644
+--- a/Lib/test/test_hashlib.py
++++ b/Lib/test/test_hashlib.py
+@@ -44,6 +44,12 @@ if builtin_hashes == default_builtin_hashes:
+ else:
+     builtin_hashlib = None
+ 
++
++if hashlib.get_fips_mode():
++    FIPS_DISABLED = {'md5', 'MD5', 'blake2b', 'blake2s'}
++else:
++    FIPS_DISABLED = set()
++
+ try:
+     from _hashlib import HASH, HASHXOF, openssl_md_meth_names
+ except ImportError:
+@@ -106,6 +112,7 @@ class HashLibTestCase(unittest.TestCase):
+     # Issue #14693: fallback modules are always compiled under POSIX
+     _warn_on_extension_import = os.name == 'posix' or COMPILED_WITH_PYDEBUG
+ 
++
+     def _conditional_import_module(self, module_name):
+         """Import a module and return a reference to it or None on failure."""
+         try:
+@@ -113,6 +120,9 @@ class HashLibTestCase(unittest.TestCase):
+         except ModuleNotFoundError as error:
+             if self._warn_on_extension_import and module_name in builtin_hashes:
+                 warnings.warn('Did a C extension fail to compile? %s' % error)
++        except ImportError as error:
++            if not hashlib.get_fips_mode():
++                raise
+         return None
+ 
+     def __init__(self, *args, **kwargs):
+@@ -211,7 +221,7 @@ class HashLibTestCase(unittest.TestCase):
+                 c.hexdigest()
+ 
+     def test_algorithms_guaranteed(self):
+-        self.assertEqual(hashlib.algorithms_guaranteed,
++        self.assertEqual(hashlib.algorithms_guaranteed - FIPS_DISABLED,
+             set(_algo for _algo in self.supported_hash_names
+                   if _algo.islower()))
+ 
+@@ -250,6 +260,12 @@ class HashLibTestCase(unittest.TestCase):
+     def test_new_upper_to_lower(self):
+         self.assertEqual(hashlib.new("SHA256").name, "sha256")
+ 
++    @unittest.skipUnless(hashlib.get_fips_mode(), "Builtin constructor only unavailable in FIPS mode")
++    def test_get_builtin_constructor_fips(self):
++        with self.assertRaises(AttributeError):
++            hashlib.__get_builtin_constructor
++
++    @unittest.skipIf(hashlib.get_fips_mode(), "No builtin constructors in FIPS mode")
+     def test_get_builtin_constructor(self):
+         get_builtin_constructor = getattr(hashlib,
+                                           '__get_builtin_constructor')
+@@ -380,7 +396,8 @@ class HashLibTestCase(unittest.TestCase):
+             self.assertRaises(TypeError, hash_object_constructor, 'spam')
+ 
+     def test_no_unicode(self):
+-        self.check_no_unicode('md5')
++        if not hashlib.get_fips_mode():
++            self.check_no_unicode('md5')
+         self.check_no_unicode('sha1')
+         self.check_no_unicode('sha224')
+         self.check_no_unicode('sha256')
+@@ -421,7 +438,8 @@ class HashLibTestCase(unittest.TestCase):
+             self.assertIn(name.split("_")[0], repr(m))
+ 
+     def test_blocksize_name(self):
+-        self.check_blocksize_name('md5', 64, 16)
++        if not hashlib.get_fips_mode():
++            self.check_blocksize_name('md5', 64, 16)
+         self.check_blocksize_name('sha1', 64, 20)
+         self.check_blocksize_name('sha224', 64, 28)
+         self.check_blocksize_name('sha256', 64, 32)
+@@ -463,18 +481,21 @@ class HashLibTestCase(unittest.TestCase):
+         self.check_blocksize_name('blake2b', 128, 64)
+         self.check_blocksize_name('blake2s', 64, 32)
+ 
++    @unittest.skipIf(hashlib.get_fips_mode(), "md5 unacceptable in FIPS mode")
+     def test_case_md5_0(self):
+         self.check(
+             'md5', b'', 'd41d8cd98f00b204e9800998ecf8427e',
+             usedforsecurity=False
+         )
+ 
++    @unittest.skipIf(hashlib.get_fips_mode(), "md5 unacceptable in FIPS mode")
+     def test_case_md5_1(self):
+         self.check(
+             'md5', b'abc', '900150983cd24fb0d6963f7d28e17f72',
+             usedforsecurity=False
+         )
+ 
++    @unittest.skipIf(hashlib.get_fips_mode(), "md5 unacceptable in FIPS mode")
+     def test_case_md5_2(self):
+         self.check(
+             'md5',
+-- 
+2.31.1
+
+
+From 42e85e3a54a806e9460ae67598f473b4a839d223 Mon Sep 17 00:00:00 2001
+From: Petr Viktorin <pviktori@redhat.com>
+Date: Mon, 26 Aug 2019 19:09:39 +0200
+Subject: [PATCH 09/13] Test the usedforsecurity flag
+
+---
+ Lib/test/test_hashlib.py | 66 +++++++++++++++++++++++++---------------
+ 1 file changed, 42 insertions(+), 24 deletions(-)
+
+diff --git a/Lib/test/test_hashlib.py b/Lib/test/test_hashlib.py
+index 6f60ad4..f306ba3 100644
+--- a/Lib/test/test_hashlib.py
++++ b/Lib/test/test_hashlib.py
+@@ -20,6 +20,7 @@ import warnings
+ from test import support
+ from test.support import _4G, bigmemtest, import_fresh_module
+ from http.client import HTTPException
++from functools import partial
+ 
+ # Were we compiled --with-pydebug or with #define Py_DEBUG?
+ COMPILED_WITH_PYDEBUG = hasattr(sys, 'gettotalrefcount')
+@@ -46,8 +47,10 @@ else:
+ 
+ 
+ if hashlib.get_fips_mode():
+-    FIPS_DISABLED = {'md5', 'MD5', 'blake2b', 'blake2s'}
++    FIPS_UNAVAILABLE = {'blake2b', 'blake2s'}
++    FIPS_DISABLED = {'md5', 'MD5', *FIPS_UNAVAILABLE}
+ else:
++    FIPS_UNAVAILABLE = set()
+     FIPS_DISABLED = set()
+ 
+ try:
+@@ -98,6 +101,14 @@ def read_vectors(hash_name):
+             parts[0] = bytes.fromhex(parts[0])
+             yield parts
+ 
++def _is_openssl_constructor(constructor):
++    if getattr(constructor, '__name__', '').startswith('openssl_'):
++        return True
++    if isinstance(constructor, partial):
++        if constructor.func.__name__.startswith('openssl_'):
++            return True
++    return False
++
+ 
+ class HashLibTestCase(unittest.TestCase):
+     supported_hash_names = ( 'md5', 'MD5', 'sha1', 'SHA1',
+@@ -128,8 +139,8 @@ class HashLibTestCase(unittest.TestCase):
+     def __init__(self, *args, **kwargs):
+         algorithms = set()
+         for algorithm in self.supported_hash_names:
+-            algorithms.add(algorithm.lower())
+-
++            if algorithm not in FIPS_UNAVAILABLE:
++                algorithms.add(algorithm.lower())
+         _blake2 = self._conditional_import_module('_blake2')
+         if _blake2:
+             algorithms.update({'blake2b', 'blake2s'})
+@@ -138,15 +149,21 @@ class HashLibTestCase(unittest.TestCase):
+         for algorithm in algorithms:
+             self.constructors_to_test[algorithm] = set()
+ 
++        def _add_constructor(algorithm, constructor):
++            constructors.add(partial(constructor, usedforsecurity=False))
++            if algorithm not in FIPS_DISABLED:
++                constructors.add(constructor)
++                constructors.add(partial(constructor, usedforsecurity=True))
++
+         # For each algorithm, test the direct constructor and the use
+         # of hashlib.new given the algorithm name.
+         for algorithm, constructors in self.constructors_to_test.items():
+-            constructors.add(getattr(hashlib, algorithm))
++            _add_constructor(algorithm, getattr(hashlib, algorithm))
+             def _test_algorithm_via_hashlib_new(data=None, _alg=algorithm, **kwargs):
+                 if data is None:
+                     return hashlib.new(_alg, **kwargs)
+                 return hashlib.new(_alg, data, **kwargs)
+-            constructors.add(_test_algorithm_via_hashlib_new)
++            _add_constructor(algorithm, _test_algorithm_via_hashlib_new)
+ 
+         _hashlib = self._conditional_import_module('_hashlib')
+         self._hashlib = _hashlib
+@@ -158,13 +175,7 @@ class HashLibTestCase(unittest.TestCase):
+             for algorithm, constructors in self.constructors_to_test.items():
+                 constructor = getattr(_hashlib, 'openssl_'+algorithm, None)
+                 if constructor:
+-                    try:
+-                        constructor()
+-                    except ValueError:
+-                        # default constructor blocked by crypto policy
+-                        pass
+-                    else:
+-                        constructors.add(constructor)
++                    _add_constructor(algorithm, constructor)
+ 
+         def add_builtin_constructor(name):
+             constructor = getattr(hashlib, "__get_builtin_constructor")(name)
+@@ -221,7 +232,7 @@ class HashLibTestCase(unittest.TestCase):
+                 c.hexdigest()
+ 
+     def test_algorithms_guaranteed(self):
+-        self.assertEqual(hashlib.algorithms_guaranteed - FIPS_DISABLED,
++        self.assertEqual(hashlib.algorithms_guaranteed,
+             set(_algo for _algo in self.supported_hash_names
+                   if _algo.islower()))
+ 
+@@ -326,10 +337,9 @@ class HashLibTestCase(unittest.TestCase):
+                 self.assertIn(h.name, self.supported_hash_names)
+             else:
+                 self.assertNotIn(h.name, self.supported_hash_names)
+-            self.assertEqual(
+-                h.name,
+-                hashlib.new(h.name, usedforsecurity=False).name
+-            )
++            if h.name not in FIPS_DISABLED:
++                self.assertEqual(h.name, hashlib.new(h.name).name)
++            self.assertEqual(h.name, hashlib.new(h.name, usedforsecurity=False).name)
+ 
+     def test_large_update(self):
+         aas = b'a' * 128
+@@ -371,9 +381,11 @@ class HashLibTestCase(unittest.TestCase):
+         self.assertGreaterEqual(len(constructors), 2)
+         for hash_object_constructor in constructors:
+             if (
+-                kwargs
+-                and hash_object_constructor.__name__.startswith('openssl_')
++                (kwargs.keys() - {'usedforsecurity'})
++                and _is_openssl_constructor(hash_object_constructor)
+             ):
++                # Don't check openssl constructors with
++                # any extra keys (except usedforsecurity)
+                 return
+             m = hash_object_constructor(data, **kwargs)
+             computed = m.hexdigest() if not shake else m.hexdigest(length)
+@@ -481,21 +493,18 @@ class HashLibTestCase(unittest.TestCase):
+         self.check_blocksize_name('blake2b', 128, 64)
+         self.check_blocksize_name('blake2s', 64, 32)
+ 
+-    @unittest.skipIf(hashlib.get_fips_mode(), "md5 unacceptable in FIPS mode")
+     def test_case_md5_0(self):
+         self.check(
+             'md5', b'', 'd41d8cd98f00b204e9800998ecf8427e',
+             usedforsecurity=False
+         )
+ 
+-    @unittest.skipIf(hashlib.get_fips_mode(), "md5 unacceptable in FIPS mode")
+     def test_case_md5_1(self):
+         self.check(
+             'md5', b'abc', '900150983cd24fb0d6963f7d28e17f72',
+             usedforsecurity=False
+         )
+ 
+-    @unittest.skipIf(hashlib.get_fips_mode(), "md5 unacceptable in FIPS mode")
+     def test_case_md5_2(self):
+         self.check(
+             'md5',
+@@ -507,12 +516,12 @@ class HashLibTestCase(unittest.TestCase):
+     @unittest.skipIf(sys.maxsize < _4G + 5, 'test cannot run on 32-bit systems')
+     @bigmemtest(size=_4G + 5, memuse=1, dry_run=False)
+     def test_case_md5_huge(self, size):
+-        self.check('md5', b'A'*size, 'c9af2dff37468ce5dfee8f2cfc0a9c6d')
++        self.check('md5', b'A'*size, 'c9af2dff37468ce5dfee8f2cfc0a9c6d', usedforsecurity=False)
+ 
+     @unittest.skipIf(sys.maxsize < _4G - 1, 'test cannot run on 32-bit systems')
+     @bigmemtest(size=_4G - 1, memuse=1, dry_run=False)
+     def test_case_md5_uintmax(self, size):
+-        self.check('md5', b'A'*size, '28138d306ff1b8281f1a9067e1a1a2b3')
++        self.check('md5', b'A'*size, '28138d306ff1b8281f1a9067e1a1a2b3', usedforsecurity=False)
+ 
+     # use the three examples from Federal Information Processing Standards
+     # Publication 180-1, Secure Hash Standard,  1995 April 17
+@@ -958,6 +967,15 @@ class HashLibTestCase(unittest.TestCase):
+         ):
+             HASHXOF()
+ 
++    @unittest.skipUnless(hashlib.get_fips_mode(), 'Needs FIPS mode.')
++    def test_usedforsecurity_repeat(self):
++        """Make sure usedforsecurity flag isn't copied to other contexts"""
++        for i in range(3):
++            for cons in hashlib.md5, partial(hashlib.new, 'md5'):
++                self.assertRaises(ValueError, cons)
++                self.assertRaises(ValueError, partial(cons, usedforsecurity=True))
++                self.assertEqual(cons(usedforsecurity=False).hexdigest(),
++                                'd41d8cd98f00b204e9800998ecf8427e')
+ 
+ class KDFTests(unittest.TestCase):
+ 
+-- 
+2.31.1
+
+
+From 7ea94845a8c8f5b2081237e69ff41993da1e5a5e Mon Sep 17 00:00:00 2001
+From: Petr Viktorin <pviktori@redhat.com>
+Date: Mon, 26 Aug 2019 19:39:48 +0200
+Subject: [PATCH 10/13] Don't re-export get_fips_mode from hashlib
+
+Fixes: https://bugzilla.redhat.com/show_bug.cgi?id=1745685
+---
+ Lib/hashlib.py                    | 22 +++++++++-------------
+ Lib/hmac.py                       |  6 +++---
+ Lib/test/test_fips.py             |  4 ++--
+ Lib/test/test_hashlib.py          | 16 +++++++++-------
+ Lib/test/test_hmac.py             |  9 +++++----
+ Lib/test/test_urllib2_localnet.py |  1 +
+ 6 files changed, 29 insertions(+), 29 deletions(-)
+
+diff --git a/Lib/hashlib.py b/Lib/hashlib.py
+index 1fd80c7..6121d25 100644
+--- a/Lib/hashlib.py
++++ b/Lib/hashlib.py
+@@ -53,6 +53,8 @@ More condensed:
+ 
+ """
+ 
++import _hashlib
++
+ # This tuple and __get_builtin_constructor() must be modified if a new
+ # always available algorithm is added.
+ __always_supported = ('md5', 'sha1', 'sha224', 'sha256', 'sha384', 'sha512',
+@@ -77,13 +79,7 @@ __block_openssl_constructor = {
+     'blake2b', 'blake2s',
+ }
+ 
+-try:
+-    from _hashlib import get_fips_mode
+-except ImportError:
+-    def get_fips_mode():
+-        return 0
+-
+-if not get_fips_mode():
++if not _hashlib.get_fips_mode():
+     __builtin_constructor_cache = {}
+ 
+     def __get_builtin_constructor(name):
+@@ -131,7 +127,7 @@ if not get_fips_mode():
+ 
+ 
+ def __get_openssl_constructor(name):
+-    if not get_fips_mode():
++    if not _hashlib.get_fips_mode():
+         if name in __block_openssl_constructor:
+             # Prefer our builtin blake2 implementation.
+             return __get_builtin_constructor(name)
+@@ -149,7 +145,7 @@ def __get_openssl_constructor(name):
+         return __get_builtin_constructor(name)
+ 
+ 
+-if not get_fips_mode():
++if not _hashlib.get_fips_mode():
+     def __py_new(name, data=b'', **kwargs):
+         """new(name, data=b'', **kwargs) - Return a new hashing object using the
+         named algorithm; optionally initialized with data (which must be
+@@ -162,7 +158,7 @@ def __hash_new(name, data=b'', **kwargs):
+     """new(name, data=b'') - Return a new hashing object using the named algorithm;
+     optionally initialized with data (which must be a bytes-like object).
+     """
+-    if not get_fips_mode():
++    if not _hashlib.get_fips_mode():
+         if name in __block_openssl_constructor:
+             # Prefer our builtin blake2 implementation.
+             return __get_builtin_constructor(name)(data, **kwargs)
+@@ -173,7 +169,7 @@ def __hash_new(name, data=b'', **kwargs):
+         # hash, try using our builtin implementations.
+         # This allows for SHA224/256 and SHA384/512 support even though
+         # the OpenSSL library prior to 0.9.8 doesn't provide them.
+-        if get_fips_mode():
++        if _hashlib.get_fips_mode():
+             raise
+         return __get_builtin_constructor(name)(data)
+ 
+@@ -185,7 +181,7 @@ try:
+     algorithms_available = algorithms_available.union(
+             _hashlib.openssl_md_meth_names)
+ except ImportError:
+-    if get_fips_mode:
++    if _hashlib.get_fips_mode:
+         raise
+     new = __py_new
+     __get_hash = __get_builtin_constructor
+@@ -214,5 +210,5 @@ for __func_name in __always_supported:
+ # Cleanup locals()
+ del __always_supported, __func_name, __get_hash
+ del __hash_new, __get_openssl_constructor
+-if not get_fips_mode():
++if not _hashlib.get_fips_mode():
+     del __py_new
+diff --git a/Lib/hmac.py b/Lib/hmac.py
+index 482e443..ff46632 100644
+--- a/Lib/hmac.py
++++ b/Lib/hmac.py
+@@ -50,7 +50,7 @@ class HMAC:
+                    msg argument.  Passing it as a keyword argument is
+                    recommended, though not required for legacy API reasons.
+         """
+-        if _hashlib.get_fips_mode():
++        if _hashlibopenssl.get_fips_mode():
+             raise ValueError(
+                 'This class is not available in FIPS mode. '
+                 + 'Use hmac.new().'
+@@ -117,7 +117,7 @@ class HMAC:
+ 
+     def update(self, msg):
+         """Feed data from msg into this hashing object."""
+-        if _hashlib.get_fips_mode():
++        if _hashlibopenssl.get_fips_mode():
+             raise ValueError('hmac.HMAC is not available in FIPS mode')
+         self._inner.update(msg)
+ 
+@@ -183,7 +183,7 @@ class HMAC_openssl(_hmacopenssl.HMAC):
+         return result
+ 
+ 
+-if _hashlib.get_fips_mode():
++if _hashlibopenssl.get_fips_mode():
+     HMAC = HMAC_openssl
+ 
+ 
+diff --git a/Lib/test/test_fips.py b/Lib/test/test_fips.py
+index fe4ea72..6b50f8b 100644
+--- a/Lib/test/test_fips.py
++++ b/Lib/test/test_fips.py
+@@ -6,7 +6,7 @@ import hashlib, _hashlib
+ 
+ class HashlibFipsTests(unittest.TestCase):
+ 
+-    @unittest.skipUnless(hashlib.get_fips_mode(), "Test only when FIPS is enabled")
++    @unittest.skipUnless(_hashlib.get_fips_mode(), "Test only when FIPS is enabled")
+     def test_fips_imports(self):
+         """blake2s and blake2b should fail to import in FIPS mode
+         """
+@@ -15,7 +15,7 @@ class HashlibFipsTests(unittest.TestCase):
+         with self.assertRaises(ValueError, msg='blake2b not available in FIPS'):
+             m = hashlib.blake2b()
+ 
+-    @unittest.skipIf(hashlib.get_fips_mode(), "blake2 hashes are not available under FIPS")
++    @unittest.skipIf(_hashlib.get_fips_mode(), "blake2 hashes are not available under FIPS")
+     def test_blake2_hashes(self):
+         self.assertEqual(hashlib.blake2b(b'abc').hexdigest(), _hashlib.openssl_blake2b(b'abc').hexdigest())
+         self.assertEqual(hashlib.blake2s(b'abc').hexdigest(), _hashlib.openssl_blake2s(b'abc').hexdigest())
+diff --git a/Lib/test/test_hashlib.py b/Lib/test/test_hashlib.py
+index f306ba3..03cfb6b 100644
+--- a/Lib/test/test_hashlib.py
++++ b/Lib/test/test_hashlib.py
+@@ -46,7 +46,9 @@ else:
+     builtin_hashlib = None
+ 
+ 
+-if hashlib.get_fips_mode():
++from _hashlib import get_fips_mode as _get_fips_mode
++
++if _get_fips_mode():
+     FIPS_UNAVAILABLE = {'blake2b', 'blake2s'}
+     FIPS_DISABLED = {'md5', 'MD5', *FIPS_UNAVAILABLE}
+ else:
+@@ -132,7 +134,7 @@ class HashLibTestCase(unittest.TestCase):
+             if self._warn_on_extension_import and module_name in builtin_hashes:
+                 warnings.warn('Did a C extension fail to compile? %s' % error)
+         except ImportError as error:
+-            if not hashlib.get_fips_mode():
++            if not _get_fips_mode():
+                 raise
+         return None
+ 
+@@ -271,12 +273,12 @@ class HashLibTestCase(unittest.TestCase):
+     def test_new_upper_to_lower(self):
+         self.assertEqual(hashlib.new("SHA256").name, "sha256")
+ 
+-    @unittest.skipUnless(hashlib.get_fips_mode(), "Builtin constructor only unavailable in FIPS mode")
++    @unittest.skipUnless(_get_fips_mode(), "Builtin constructor only unavailable in FIPS mode")
+     def test_get_builtin_constructor_fips(self):
+         with self.assertRaises(AttributeError):
+             hashlib.__get_builtin_constructor
+ 
+-    @unittest.skipIf(hashlib.get_fips_mode(), "No builtin constructors in FIPS mode")
++    @unittest.skipIf(_get_fips_mode(), "No builtin constructors in FIPS mode")
+     def test_get_builtin_constructor(self):
+         get_builtin_constructor = getattr(hashlib,
+                                           '__get_builtin_constructor')
+@@ -408,7 +410,7 @@ class HashLibTestCase(unittest.TestCase):
+             self.assertRaises(TypeError, hash_object_constructor, 'spam')
+ 
+     def test_no_unicode(self):
+-        if not hashlib.get_fips_mode():
++        if not _get_fips_mode():
+             self.check_no_unicode('md5')
+         self.check_no_unicode('sha1')
+         self.check_no_unicode('sha224')
+@@ -450,7 +452,7 @@ class HashLibTestCase(unittest.TestCase):
+             self.assertIn(name.split("_")[0], repr(m))
+ 
+     def test_blocksize_name(self):
+-        if not hashlib.get_fips_mode():
++        if not _get_fips_mode():
+             self.check_blocksize_name('md5', 64, 16)
+         self.check_blocksize_name('sha1', 64, 20)
+         self.check_blocksize_name('sha224', 64, 28)
+@@ -967,7 +969,7 @@ class HashLibTestCase(unittest.TestCase):
+         ):
+             HASHXOF()
+ 
+-    @unittest.skipUnless(hashlib.get_fips_mode(), 'Needs FIPS mode.')
++    @unittest.skipUnless(_get_fips_mode(), 'Needs FIPS mode.')
+     def test_usedforsecurity_repeat(self):
+         """Make sure usedforsecurity flag isn't copied to other contexts"""
+         for i in range(3):
+diff --git a/Lib/test/test_hmac.py b/Lib/test/test_hmac.py
+index 544ec7c..2d44849 100644
+--- a/Lib/test/test_hmac.py
++++ b/Lib/test/test_hmac.py
+@@ -5,6 +5,7 @@ import hashlib
+ import unittest
+ import unittest.mock
+ import warnings
++from _hashlib import get_fips_mode
+ 
+ from test.support import hashlib_helper
+ 
+@@ -322,7 +323,7 @@ class TestVectorsTestCase(unittest.TestCase):
+     def test_sha512_rfc4231(self):
+         self._rfc4231_test_cases(hashlib.sha512, 'sha512', 64, 128)
+ 
+-    @unittest.skipIf(hashlib.get_fips_mode(), 'MockCrazyHash unacceptable in FIPS mode.')
++    @unittest.skipIf(get_fips_mode(), 'MockCrazyHash unacceptable in FIPS mode.')
+     @hashlib_helper.requires_hashdigest('sha256')
+     def test_legacy_block_size_warnings(self):
+         class MockCrazyHash(object):
+@@ -455,7 +456,7 @@ class SanityTestCase(unittest.TestCase):
+ 
+ class CopyTestCase(unittest.TestCase):
+ 
+-    @unittest.skipIf(hashlib.get_fips_mode(), "Internal attributes unavailable in FIPS mode")
++    @unittest.skipIf(get_fips_mode(), "Internal attributes unavailable in FIPS mode")
+     @hashlib_helper.requires_hashdigest('sha256')
+     def test_attributes(self):
+         # Testing if attributes are of same type.
+@@ -469,7 +470,7 @@ class CopyTestCase(unittest.TestCase):
+             "Types of outer don't match.")
+ 
+ 
+-    @unittest.skipIf(hashlib.get_fips_mode(), "Internal attributes unavailable in FIPS mode")
++    @unittest.skipIf(get_fips_mode(), "Internal attributes unavailable in FIPS mode")
+     @hashlib_helper.requires_hashdigest('sha256')
+     def test_realcopy(self):
+         # Testing if the copy method created a real copy.
+@@ -485,7 +486,7 @@ class CopyTestCase(unittest.TestCase):
+         self.assertEqual(h1._outer, h1.outer)
+         self.assertEqual(h1._digest_cons, h1.digest_cons)
+ 
+-    @unittest.skipIf(hashlib.get_fips_mode(), "Internal attributes unavailable in FIPS mode")
++    @unittest.skipIf(get_fips_mode(), "Internal attributes unavailable in FIPS mode")
+     @hashlib_helper.requires_hashdigest('sha256')
+     def test_properties(self):
+         # deprecated properties
+diff --git a/Lib/test/test_urllib2_localnet.py b/Lib/test/test_urllib2_localnet.py
+index ed426b0..faec684 100644
+--- a/Lib/test/test_urllib2_localnet.py
++++ b/Lib/test/test_urllib2_localnet.py
+@@ -7,6 +7,7 @@ import http.server
+ import threading
+ import unittest
+ import hashlib
++from _hashlib import get_fips_mode
+ 
+ from test import support
+ from test.support import hashlib_helper
+-- 
+2.31.1
+
+
+From 62c667aed616986e8b6df9883ccebf9326f041ee Mon Sep 17 00:00:00 2001
+From: Christian Heimes <christian@python.org>
+Date: Wed, 20 Nov 2019 10:59:25 +0100
+Subject: [PATCH 11/13] Use FIPS compliant CSPRNG
+
+Kernel's getrandom() source is not yet FIPS compliant. Use OpenSSL's
+DRBG in FIPS mode and disable os.getrandom() function.
+
+Signed-off-by: Christian Heimes <christian@python.org>
+---
+ Lib/test/test_os.py     |  6 ++++++
+ Makefile.pre.in         |  2 +-
+ Modules/posixmodule.c   |  8 +++++++
+ Python/bootstrap_hash.c | 48 +++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 63 insertions(+), 1 deletion(-)
+
+diff --git a/Lib/test/test_os.py b/Lib/test/test_os.py
+index 35933e9..f67a65d 100644
+--- a/Lib/test/test_os.py
++++ b/Lib/test/test_os.py
+@@ -29,6 +29,7 @@ import types
+ import unittest
+ import uuid
+ import warnings
++from _hashlib import get_fips_mode
+ from test import support
+ from test.support import socket_helper
+ from platform import win32_is_iot
+@@ -1661,6 +1662,11 @@ class GetRandomTests(unittest.TestCase):
+                 raise unittest.SkipTest("getrandom() syscall fails with ENOSYS")
+             else:
+                 raise
++        except ValueError as exc:
++            if get_fips_mode() and exc.args[0] == "getrandom is not FIPS compliant":
++                raise unittest.SkipTest("Skip in FIPS mode")
++            else:
++                raise
+ 
+     def test_getrandom_type(self):
+         data = os.getrandom(16)
+diff --git a/Makefile.pre.in b/Makefile.pre.in
+index c57fc96..7b94db1 100644
+--- a/Makefile.pre.in
++++ b/Makefile.pre.in
+@@ -116,7 +116,7 @@ PY_STDMODULE_CFLAGS= $(PY_CFLAGS) $(PY_CFLAGS_NODIST) $(PY_CPPFLAGS) $(CFLAGSFOR
+ PY_BUILTIN_MODULE_CFLAGS= $(PY_STDMODULE_CFLAGS) -DPy_BUILD_CORE_BUILTIN
+ PY_CORE_CFLAGS=	$(PY_STDMODULE_CFLAGS) -DPy_BUILD_CORE
+ # Linker flags used for building the interpreter object files
+-PY_CORE_LDFLAGS=$(PY_LDFLAGS) $(PY_LDFLAGS_NODIST)
++PY_CORE_LDFLAGS=$(PY_LDFLAGS) $(PY_LDFLAGS_NODIST) -lcrypto
+ # Strict or non-strict aliasing flags used to compile dtoa.c, see above
+ CFLAGS_ALIASING=@CFLAGS_ALIASING@
+ 
+diff --git a/Modules/posixmodule.c b/Modules/posixmodule.c
+index c984e2e..d1b0e39 100644
+--- a/Modules/posixmodule.c
++++ b/Modules/posixmodule.c
+@@ -502,6 +502,9 @@ extern char        *ctermid_r(char *);
+ #  define MODNAME "posix"
+ #endif
+ 
++/* for FIPS check in os.getrandom() */
++#include <openssl/crypto.h>
++
+ #if defined(__sun)
+ /* Something to implement in autoconf, not present in autoconf 2.69 */
+ #  define HAVE_STRUCT_STAT_ST_FSTYPE 1
+@@ -14256,6 +14259,11 @@ os_getrandom_impl(PyObject *module, Py_ssize_t size, int flags)
+         return posix_error();
+     }
+ 
++    if (FIPS_mode()) {
++        PyErr_SetString(PyExc_ValueError, "getrandom is not FIPS compliant");
++        return NULL;
++    }
++
+     bytes = PyBytes_FromStringAndSize(NULL, size);
+     if (bytes == NULL) {
+         PyErr_NoMemory();
+diff --git a/Python/bootstrap_hash.c b/Python/bootstrap_hash.c
+index a212f69..6333cd4 100644
+--- a/Python/bootstrap_hash.c
++++ b/Python/bootstrap_hash.c
+@@ -429,6 +429,50 @@ dev_urandom_close(void)
+ }
+ #endif /* !MS_WINDOWS */
+ 
++#include <openssl/rand.h>
++#include <_hashopenssl.h>
++
++#if (OPENSSL_VERSION_NUMBER < 0x10101000L) || defined(LIBRESSL_VERSION_NUMBER)
++#  error "py_openssl_drbg_urandom requires OpenSSL 1.1.1 for fork safety"
++#endif
++
++static int
++py_openssl_drbg_urandom(char *buffer, Py_ssize_t size, int raise)
++{
++    int res;
++    static int init = 0;
++
++    if (!init) {
++        init = 1;
++        res = OPENSSL_init_crypto(OPENSSL_INIT_ATFORK, NULL);
++        if (res == 0) {
++            if (raise) {
++                _setException(PyExc_RuntimeError);
++            }
++            return 0;
++        }
++    }
++
++    if (size > INT_MAX) {
++        if (raise) {
++            PyErr_Format(PyExc_OverflowError,
++                         "RAND_bytes() size is limited to 2GB.");
++        }
++        return -1;
++    }
++
++    res = RAND_bytes((unsigned char*)buffer, (int)size);
++
++    if (res == 1) {
++        return 1;
++    } else {
++        if (raise) {
++            _setException(PyExc_RuntimeError);
++        }
++        return 0;
++    }
++}
++
+ 
+ /* Fill buffer with pseudo-random bytes generated by a linear congruent
+    generator (LCG):
+@@ -513,6 +557,10 @@ pyurandom(void *buffer, Py_ssize_t size, int blocking, int raise)
+         return 0;
+     }
+ 
++    if (FIPS_mode()) {
++        return py_openssl_drbg_urandom(buffer, size, raise);
++    }
++
+ #ifdef MS_WINDOWS
+     return win32_urandom((unsigned char *)buffer, size, raise);
+ #else
+-- 
+2.31.1
+
+
+From 58e51c67ce2afa268e7a44100d4ca9025b54117c Mon Sep 17 00:00:00 2001
+From: Petr Viktorin <pviktori@redhat.com>
+Date: Tue, 7 Apr 2020 15:16:45 +0200
+Subject: [PATCH 12/13] Pass kwargs (like usedforsecurity) through __hash_new
+
+---
+ Lib/hashlib.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Lib/hashlib.py b/Lib/hashlib.py
+index 6121d25..00794ad 100644
+--- a/Lib/hashlib.py
++++ b/Lib/hashlib.py
+@@ -171,7 +171,7 @@ def __hash_new(name, data=b'', **kwargs):
+         # the OpenSSL library prior to 0.9.8 doesn't provide them.
+         if _hashlib.get_fips_mode():
+             raise
+-        return __get_builtin_constructor(name)(data)
++        return __get_builtin_constructor(name)(data, **kwargs)
+ 
+ 
+ try:
+-- 
+2.31.1
+
+
+From ea7b14d45e9a41182ca2411ad6730a9987ec49f1 Mon Sep 17 00:00:00 2001
+From: Charalampos Stratakis <cstratak@redhat.com>
+Date: Fri, 24 Apr 2020 19:57:16 +0200
+Subject: [PATCH 13/13] Skip the test_with_digestmod_no_default under FIPS
+
+Also add a new test for testing the error values of
+the digestmod parameter misuse under FIPS mode.
+---
+ Lib/test/test_hmac.py | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/Lib/test/test_hmac.py b/Lib/test/test_hmac.py
+index 2d44849..e0a5b6a 100644
+--- a/Lib/test/test_hmac.py
++++ b/Lib/test/test_hmac.py
+@@ -347,6 +347,7 @@ class TestVectorsTestCase(unittest.TestCase):
+                 hmac.HMAC(b'a', b'b', digestmod=MockCrazyHash)
+                 self.fail('Expected warning about small block_size')
+ 
++    @unittest.skipIf(get_fips_mode(), "digestmod misuse raises different errors under FIPS mode")
+     def test_with_digestmod_no_default(self):
+         """The digestmod parameter is required as of Python 3.8."""
+         with self.assertRaisesRegex(TypeError, r'required.*digestmod'):
+@@ -358,6 +359,18 @@ class TestVectorsTestCase(unittest.TestCase):
+         with self.assertRaisesRegex(TypeError, r'required.*digestmod'):
+             hmac.HMAC(key, msg=data, digestmod='')
+ 
++    @unittest.skipIf(not get_fips_mode(), "test is run only under FIPS mode")
++    def test_with_digestmod_no_default_under_fips(self):
++        """Test the error values of digestmod misuse under FIPS mode."""
++        with self.assertRaises(TypeError):
++            key = b"\x0b" * 16
++            data = b"Hi There"
++            hmac.HMAC(key, data, digestmod=None)
++        with self.assertRaises(ValueError):
++            hmac.new(key, data)
++        with self.assertRaises(ValueError):
++            hmac.HMAC(key, msg=data, digestmod='')
++
+ 
+ class ConstructorTestCase(unittest.TestCase):
+ 
+-- 
+2.31.1
+

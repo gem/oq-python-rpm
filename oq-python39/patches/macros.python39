@@ -1,0 +1,32 @@
+%__python3 /usr/bin/python3.9
+%python3_pkgversion 39
+%__pytest /usr/bin/pytest-3.9
+
+# The following are macros from macros.python3 in Fedora that are newer/different than those in the python3-rpm-macros package in RHEL.
+# These macros overwrite/supercede some of the macros in the python3-rpm-macros package in RHEL.
+
+%python3_version %(%{__python3} -Ic "import sys; sys.stdout.write('{0.major}.{0.minor}'.format(sys.version_info))")
+%python3_version_nodots %(%{__python3} -Ic "import sys; sys.stdout.write('{0.major}{0.minor}'.format(sys.version_info))")
+
+%py3_install() %{expand:\\\
+  CFLAGS="${CFLAGS:-${RPM_OPT_FLAGS}}" LDFLAGS="${LDFLAGS:-${RPM_LD_FLAGS}}"\\\
+  %{__python3} %{py_setup} %{?py_setup_args} install -O1 --skip-build --root %{buildroot} %{?*}
+  rm -rfv %{buildroot}%{_bindir}/__pycache__
+}
+
+%py3_install_egg() %{expand:\\\
+  mkdir -p %{buildroot}%{python3_sitelib}
+  CFLAGS="%{optflags}" %{__python3} -m easy_install -m --prefix %{buildroot}%{_prefix} -Z dist/*-py%{python3_version}.egg %{?*}
+  rm -rfv %{buildroot}%{_bindir}/__pycache__
+}
+
+%py3_install_wheel() %{expand:\\\
+  CFLAGS="%{optflags}" %{__python3} -m pip install -I dist/%{1} --root %{buildroot} --no-deps --no-index --no-warn-script-location
+  rm -rfv %{buildroot}%{_bindir}/__pycache__
+  for distinfo in %{buildroot}%{python3_sitelib}/*.dist-info %{buildroot}%{python3_sitearch}/*.dist-info; do
+    if [ -f ${distinfo}/direct_url.json ]; then
+      rm -fv ${distinfo}/direct_url.json
+      sed -i '/direct_url.json/d' ${distinfo}/RECORD
+    fi
+  done
+}
