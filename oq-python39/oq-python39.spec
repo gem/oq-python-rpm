@@ -18,7 +18,10 @@ URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
-Version: %{pybasever}.6
+%global general_version %{pybasever}.6
+#global prerel ...
+%global upstream_version %{general_version}%{?prerel}
+Version: %{general_version}%{?prerel:~%{prerel}}
 Release: 2%{?dist}
 License: Python
 
@@ -154,7 +157,6 @@ ExcludeArch: i686
 # See BZ: https://bugzilla.redhat.com/show_bug.cgi?id=1916172
 %global __provides_exclude_from ^%{pylibdir}/test/test_importlib/data/example-.*\.egg$
 
-
 # =======================
 # Build-time requirements
 # =======================
@@ -165,31 +167,45 @@ BuildRequires: autoconf
 BuildRequires: bluez-libs-devel
 BuildRequires: bzip2
 BuildRequires: bzip2-devel
+BuildRequires: desktop-file-utils
 BuildRequires: expat-devel
 
 BuildRequires: findutils
 BuildRequires: gcc-c++
+%if %{with gdbm}
+BuildRequires: gdbm-devel
+%endif
+BuildRequires: git-core
+BuildRequires: glibc-all-langpacks
 BuildRequires: glibc-devel
 BuildRequires: gmp-devel
+BuildRequires: gnupg2
 BuildRequires: libappstream-glib
 BuildRequires: libffi-devel
-%if 0%{?fedora} >= 27
 BuildRequires: libnsl2-devel
-%endif
 BuildRequires: libtirpc-devel
 BuildRequires: libGL-devel
+BuildRequires: libuuid-devel
 BuildRequires: libX11-devel
+BuildRequires: make
 BuildRequires: ncurses-devel
 
 BuildRequires: openssl-devel
 BuildRequires: pkgconfig
 BuildRequires: readline-devel
+BuildRequires: redhat-rpm-config
 BuildRequires: sqlite-devel
+BuildRequires: gdb
 
 BuildRequires: tar
 BuildRequires: tcl-devel
 BuildRequires: tix-devel
 BuildRequires: tk-devel
+BuildRequires: tzdata
+
+%if %{with valgrind}
+BuildRequires: valgrind-devel
+%endif
 
 BuildRequires: xz-devel
 BuildRequires: zlib-devel
@@ -197,23 +213,43 @@ BuildRequires: zlib-devel
 BuildRequires: /usr/bin/dtrace
 
 # workaround http://bugs.python.org/issue19804 (test_uuid requires ifconfig)
-%if 0%{?fedora} || 0%{?el8}
 BuildRequires: /usr/sbin/ifconfig
-%else
-BuildRequires: /sbin/ifconfig
+
+%if %{with rpmwheels}
+BuildRequires: python%{python3_pkgversion}-setuptools-wheel
+BuildRequires: python%{python3_pkgversion}-pip-wheel
 %endif
 
+%if %{without bootstrap}
+# for make regen-all and distutils.tests.test_bdist_rpm
+BuildRequires: python%{pyshortver}
+%endif
+
+# Generators run on Python 3.6 so we can take this dependency out of the bootstrap loop
+BuildRequires: python3-rpm-generators
 
 # =======================
 # Source code and patches
 # =======================
+#Source: https://www.python.org/ftp/python/%{version}/Python-%{version}.tar.xz
 
-Source: https://www.python.org/ftp/python/%{version}/Python-%{version}.tar.xz
+Source0: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz
+Source1: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz.asc
+Source2: %{url}static/files/pubkeys.txt
+Source3: macros.python39
 
 # A simple script to check timestamps of bytecode files
 # Run in check section with Python that is currently being built
 # Originally written by bkabrda
 Source8: check-pyc-timestamps.py
+
+# Desktop menu entry for idle3
+Source10: idle3.desktop
+
+# AppData file for idle3
+Source11: idle3.appdata.xml
+
+# (Patches taken from github.com/fedora-python/cpython)
 
 # 00001 #
 # Fixup distutils/unixccompiler.py to remove standard library path from rpath:
