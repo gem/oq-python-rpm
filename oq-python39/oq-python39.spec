@@ -112,6 +112,13 @@ ExcludeArch: i686
 #   foo/__pycache__/bar.cpython-%%{pyshortver}.opt-2.pyc
 %global bytecode_suffixes .cpython-%{pyshortver}*.pyc
 
+# libmpdec (mpdecimal package in Fedora) is tightly coupled with the
+# decimal module. We keep it bundled as to avoid incompatibilities
+# with the packaged version.
+# The version information can be found at Modules/_decimal/libmpdec/mpdecimal.h
+# defined as MPD_VERSION.
+%global libmpdec_version 2.5.0
+
 # Python's configure script defines SOVERSION, and this is used in the Makefile
 # to determine INSTSONAME, the name of the libpython DSO:
 #   LDLIBRARY='libpython$(VERSION).so'
@@ -121,6 +128,7 @@ ExcludeArch: i686
 # and halt the build)
 %global py_SOVERSION 1.0
 %global py_INSTSONAME_optimized libpython%{LDVERSION_optimized}.so.%{py_SOVERSION}
+%global py_INSTSONAME_debug     libpython%{LDVERSION_debug}.so.%{py_SOVERSION}
 
 # Make sure that the proper installation of python is used by macros
 %define __python3 %{_bindir}/python3.9
@@ -131,37 +139,20 @@ ExcludeArch: i686
 # on files that test invalid syntax.
 %undefine py_auto_byte_compile
 
-# Backported from EPEL:
-#  https://src.fedoraproject.org/cgit/rpms/python36.git/tree/?h=epel7&id=ee1b6fe2f274b9a4b526263f42d208bbfbe08a2f
-# We want to byte-compile the .py files within the packages using the new
-# python3 binary.
-#
-# Unfortunately, rpmbuild's infrastructure requires us to jump through some
-# hoops to avoid byte-compiling with the system python version:
-#   /usr/lib/rpm/redhat/macros sets up build policy that (amongst other things)
-# defines __os_install_post.  In particular, "brp-python-bytecompile" is
-# invoked without an argument thus using the wrong version of python3
-# (/usr/bin/python3.6, rather than the freshly built python3), thus leading to
-# numerous syntax errors, and incorrect magic numbers in the .pyc files.  We
-# thus override __os_install_post to avoid invoking this script:
-%global __os_install_post /usr/lib/rpm/brp-compress \
-  %{!?__debug_package:/usr/lib/rpm/brp-strip %{__strip}} \
-  /usr/lib/rpm/brp-strip-static-archive %{__strip} \
-  /usr/lib/rpm/brp-strip-comment-note %{__strip} %{__objdump} \
-  /usr/lib/rpm/brp-python-hardlink
-# to remove the invocation of brp-python-bytecompile, whilst keeping the
-# invocation of brp-python-hardlink (since this should still work for python3
-# pyc files)
 
-# For multilib support, files that are different between 32- and 64-bit arches
-# need different filenames. Use "64" or "32" according to the word size.
-# Currently, the best way to determine an architecture's word size happens to
-# be checking %%{_lib}.
-%if "%{_lib}" == "lib64"
-%global wordsize 64
-%else
-%global wordsize 32
-%endif
+# When a main_python build is attempted despite the %%__default_python3_pkgversion value
+# We undefine magic macros so the python3-... package does not provide wrong python3X-...
+# RHEL: DISABLED, __default_python3_pkgversion is not implemented
+# %%if %%{with main_python} && ("%%{?__default_python3_pkgversion}" != "%%{pybasever}")
+# %%undefine __pythonname_provides
+# %%{warn:Doing a main_python build with wrong %%%%__default_python3_pkgversion (0%%{?__default_python3_pkgversion}, but this is %%pyshortver)}
+# %%endif
+
+# RHEL: An example egg file is included among the python39-test files and due
+# to a bug in python3-rpm-generator, mistaken Provides are generated. So we
+# exclude them until the issue is properly addressed.
+# See BZ: https://bugzilla.redhat.com/show_bug.cgi?id=1916172
+%global __provides_exclude_from ^%{pylibdir}/test/test_importlib/data/example-.*\.egg$
 
 
 # =======================
