@@ -46,11 +46,6 @@ ExcludeArch: i686
 # Run the test suite in %%check
 %bcond_without tests
 
-# Support for the GDB debugger
-%bcond_without gdb_hooks
-
-# The dbm.gnu module (key-value database)
-%bcond_without gdbm
 
 # Main interpreter loop optimization
 %bcond_without computed_gotos
@@ -172,9 +167,6 @@ BuildRequires: expat-devel
 
 BuildRequires: findutils
 BuildRequires: gcc-c++
-%if %{with gdbm}
-BuildRequires: gdbm-devel
-%endif
 BuildRequires: git-core
 BuildRequires: glibc-all-langpacks
 BuildRequires: glibc-devel
@@ -195,17 +187,12 @@ BuildRequires: pkgconfig
 BuildRequires: readline-devel
 BuildRequires: redhat-rpm-config
 BuildRequires: sqlite-devel
-BuildRequires: gdb
 
 BuildRequires: tar
 BuildRequires: tcl-devel
 BuildRequires: tix-devel
 BuildRequires: tk-devel
 BuildRequires: tzdata
-
-%if %{with valgrind}
-BuildRequires: valgrind-devel
-%endif
 
 BuildRequires: xz-devel
 BuildRequires: zlib-devel
