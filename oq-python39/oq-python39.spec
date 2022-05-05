@@ -864,5 +864,5 @@ CheckPython optimized
 # ======================================================
 
 %changelog
-* Thu May 05 2021 Antonio Ettorre <antonio@openquake.org> - 3.9.6-2
+* Thu May 05 2022 Antonio Ettorre <antonio@openquake.org> - 3.9.6-2
 - First build of oq-python39
