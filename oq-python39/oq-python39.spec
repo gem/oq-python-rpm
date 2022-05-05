@@ -353,8 +353,6 @@ Patch353: 00353-architecture-names-upstream-downstream.patch
 %description
 Python %{pybasever} package for Openquake
 
-
-%package -n %{pkgname}
 Summary: Openquake Python %{pybasever} interpreter
 
 Provides: oq-python%{pybasever} = %{version}-%{release}
@@ -634,9 +632,11 @@ sed -i -e "s/'pyconfig.h'/'%{_pyconfig_h}'/" \
 LD_LIBRARY_PATH=./build/optimized ./build/optimized/python \
   Tools/scripts/pathfix.py \
   -i "%{_bindir}/python%{pybasever}" -pn \
-  %{buildroot} \
-  %{buildroot}%{_bindir}/*%{pybasever}.py \
-  %{?with_gdb_hooks:%{buildroot}$DirHoldingGdbPy/*.py}
+  %{buildroot} 
+
+# Remove tests for python3-tools which was removed in
+# https://bugzilla.redhat.com/show_bug.cgi?id=1312030
+rm -rf %{buildroot}%{pylibdir}/test/test_tools
 
 # Remove shebang lines from .py files that aren't executable, and
 # remove executability from .py files that don't have a shebang line:
