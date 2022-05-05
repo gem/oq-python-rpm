@@ -781,36 +781,26 @@ CheckPython() {
   ConfName=$1
   ConfDir=$(pwd)/build/$ConfName
 
-  # Fedora sets explicit minimum/maximum TLS versions.
-  # Python's test suite assumes that the minimum/maximum version is set to
-  # a magic marker. We workaround the test problem by setting:
-  export OPENSSL_CONF=/non-existing-file
-  # https://bugzilla.redhat.com/show_bug.cgi?id=1618753
-  # https://bugzilla.redhat.com/show_bug.cgi?id=1778357
-  # https://bugs.python.org/issue35045
-  # https://bugs.python.org/issue38815
-
   echo STARTING: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
 
   # Note that we're running the tests using the version of the code in the
   # builddir, not in the buildroot.
 
-  # Run the upstream test suite, setting "WITHIN_PYTHON_RPM_BUILD" so that the
-  # our non-standard decorators take effect on the relevant tests:
-  #   @unittest._skipInRpmBuild(reason)
-  #   @unittest._expectedFailureInRpmBuild
-  WITHIN_PYTHON_RPM_BUILD= \
+  # Show some info, helpful for debugging test failures
+  LD_LIBRARY_PATH=$ConfDir $ConfDir/python -m test.pythoninfo
+
+  # Run the upstream test suite
+  # --timeout=1800: kill test running for longer than 30 minutes
+  # test_distutils
+  #   distutils.tests.test_bdist_rpm tests fail when bootstraping the Python
+  #   package: rpmbuild requires /usr/bin/pythonX.Y to be installed
   LD_LIBRARY_PATH=$ConfDir $ConfDir/python -m test.regrtest \
-    -wW --slowest --findleaks \
+    -wW --slowest -j0 --timeout=1800 \
+    %if %{with bootstrap}
     -x test_distutils \
-    -x test_bdist_rpm \
+    %endif
     %ifarch %{mips64}
     -x test_ctypes \
-    %endif
-    %ifarch ppc64le
-    -x test_buffer \
-    -x test_tarfile \
-    -x test_ssl \
     %endif
 
   echo FINISHED: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
@@ -818,27 +808,19 @@ CheckPython() {
 }
 
 %if %{with tests}
-
 # Check each of the configurations:
 CheckPython optimized
-
-%endif
+%endif # with tests
 
 
 # ======================================================
-# Scriptlets
+# Files for each RPM (sub)package
 # ======================================================
 
-# Convert lib64 symlink into a real dir to avoid transaction conflicts during upgrades.
-# See: https://fedoraproject.org/wiki/Packaging:Directory_Replacement#Scriptlet_to_replace_a_symlink_to_a_directory_with_a_directory
-%pretrans -p <lua>
-path = "%{_libdir}"
-st = posix.stat(path)
-if st and st.type == "link" then
-  os.remove(path)
-end
+%files -n %{pkgname}-rpm-macros
+%{rpmmacrodir}/macros.python%{pyshortver}
 
-%files
+%files -n %{pkgname}
 %doc README.rst LICENSE
 
 # In /opt/openquake we are the owners of bin, usr and so on
@@ -892,5 +874,5 @@ end
 # ======================================================
 
 %changelog
-* Fri May 1 2020 Daniele Viganò <daniele@vigano.me> - 3.8.2-1
-- First build of oq-python38 (migrated from oq-python37)
+* Thu May 05 2021 Antonio Ettorre <antonio@openquake.org> - 3.9.6-2
+- First build of oq-python39
