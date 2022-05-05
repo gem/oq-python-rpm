@@ -71,6 +71,9 @@ ExcludeArch: i686
 # General global macros
 # =====================
 
+%global pkgname oq-python%{pyshortver}
+%global exename oq-python%{pybasever}
+
 %global pylibdir %{_libdir}/python%{pybasever}
 %global dynload_dir %{pylibdir}/lib-dynload
 
@@ -346,13 +349,17 @@ Patch353: 00353-architecture-names-upstream-downstream.patch
 
 # When the user tries to `yum install python`, yum will list this package among
 # the possible alternatives
-Provides: oq-python%{pybasever} = %{version}-%{release}
-Provides: oqpython%{pybasever}%{?_isa} = %{version}-%{release}
-Obsoletes: oq-python35 oq-python36 oq-python37
 
 %description
-Python %{pybasever} package for Openquake 
+Python %{pybasever} package for Openquake
 
+
+%package -n %{pkgname}
+Summary: Openquake Python %{pybasever} interpreter
+
+Provides: oq-python%{pybasever} = %{version}-%{release}
+Provides: oq-python%{pybasever}%{?_isa} = %{version}-%{release}
+Obsoletes: oq-python35 oq-python36 oq-python37
 # ======================================================
 # The prep phase of the build:
 # ======================================================
@@ -420,7 +427,7 @@ topdir=$(pwd)
 %global computed_gotos_flag no
 %endif
 
-%if %{with optimizations} 
+%if %{with optimizations}
 %global optimizations_flag "--enable-optimizations"
 %else
 %global optimizations_flag "--disable-optimizations"
@@ -778,62 +785,267 @@ CheckPython() {
 
 }
 
-%if %{with tests}
-# Check each of the configurations:
-CheckPython optimized
-%endif # with tests
-
-
 # ======================================================
 # Files for each RPM (sub)package
 # ======================================================
 
-%{rpmmacrodir}/macros.python%{pyshortver}
-
-%doc README.rst LICENSE
-
-# In /opt/openquake we are the owners of bin, usr and so on
-%dir %{_prefix}
-%dir %{_bindir}
-%dir %{_libdir}
-%if "%{_lib}" == "lib64"
-%dir %{_prefix}/lib
-%endif
-%dir %{_includedir}
-%dir %{_datadir}
-
-%{_bindir}/pydoc3
-%{_bindir}/python3
-%{_bindir}/pip3
+%files -n %{pkgname}
+%doc README.rst
 
 %{_bindir}/pydoc%{pybasever}
-%{_bindir}/python%{pybasever}
-%{_bindir}/pip%{pybasever}
-%{_bindir}/easy_install-%{pybasever}
-%{_mandir}
 
-%{pylibdir}/
+%{_bindir}/python%{pybasever}
+%{_bindir}/python%{LDVERSION_optimized}
+%{_mandir}/*/*3*
+
+
+%dir %{pylibdir}
+%dir %{dynload_dir}
+
+%license %{pylibdir}/LICENSE.txt
+
+%{pylibdir}/lib2to3
+
+%dir %{pylibdir}/unittest/
+%dir %{pylibdir}/unittest/__pycache__/
+%{pylibdir}/unittest/*.py
+%{pylibdir}/unittest/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/asyncio/
+%dir %{pylibdir}/asyncio/__pycache__/
+%{pylibdir}/asyncio/*.py
+%{pylibdir}/asyncio/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/venv/
+%dir %{pylibdir}/venv/__pycache__/
+%{pylibdir}/venv/*.py
+%{pylibdir}/venv/__pycache__/*%{bytecode_suffixes}
+%{pylibdir}/venv/scripts
+
+%{pylibdir}/wsgiref
+%{pylibdir}/xmlrpc
+
+%dir %{pylibdir}/ensurepip/
+%dir %{pylibdir}/ensurepip/__pycache__/
+%{pylibdir}/ensurepip/*.py
+%{pylibdir}/ensurepip/__pycache__/*%{bytecode_suffixes}
+
+
+%dir %{pylibdir}/ensurepip/_bundled
+%{pylibdir}/ensurepip/_bundled/*.whl
+%{pylibdir}/ensurepip/_bundled/__init__.py
+%{pylibdir}/ensurepip/_bundled/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/concurrent/
+%dir %{pylibdir}/concurrent/__pycache__/
+%{pylibdir}/concurrent/*.py
+%{pylibdir}/concurrent/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/concurrent/futures/
+%dir %{pylibdir}/concurrent/futures/__pycache__/
+%{pylibdir}/concurrent/futures/*.py
+%{pylibdir}/concurrent/futures/__pycache__/*%{bytecode_suffixes}
+
+%{pylibdir}/pydoc_data
+
+%{dynload_dir}/_blake2.%{SOABI_optimized}.so
+%{dynload_dir}/_hmacopenssl.%{SOABI_optimized}.so
+
+%{dynload_dir}/_asyncio.%{SOABI_optimized}.so
+%{dynload_dir}/_bisect.%{SOABI_optimized}.so
+%{dynload_dir}/_bz2.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_cn.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_hk.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_iso2022.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_jp.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_kr.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_tw.%{SOABI_optimized}.so
+%{dynload_dir}/_contextvars.%{SOABI_optimized}.so
+%{dynload_dir}/_crypt.%{SOABI_optimized}.so
+%{dynload_dir}/_csv.%{SOABI_optimized}.so
+%{dynload_dir}/_ctypes.%{SOABI_optimized}.so
+%{dynload_dir}/_curses.%{SOABI_optimized}.so
+%{dynload_dir}/_curses_panel.%{SOABI_optimized}.so
+%{dynload_dir}/_dbm.%{SOABI_optimized}.so
+%{dynload_dir}/_decimal.%{SOABI_optimized}.so
+%{dynload_dir}/_elementtree.%{SOABI_optimized}.so
+%{dynload_dir}/_hashlib.%{SOABI_optimized}.so
+%{dynload_dir}/_heapq.%{SOABI_optimized}.so
+%{dynload_dir}/_json.%{SOABI_optimized}.so
+%{dynload_dir}/_lsprof.%{SOABI_optimized}.so
+%{dynload_dir}/_lzma.%{SOABI_optimized}.so
+%{dynload_dir}/_multibytecodec.%{SOABI_optimized}.so
+%{dynload_dir}/_multiprocessing.%{SOABI_optimized}.so
+%{dynload_dir}/_opcode.%{SOABI_optimized}.so
+%{dynload_dir}/_pickle.%{SOABI_optimized}.so
+%{dynload_dir}/_posixsubprocess.%{SOABI_optimized}.so
+%{dynload_dir}/_queue.%{SOABI_optimized}.so
+%{dynload_dir}/_random.%{SOABI_optimized}.so
+%{dynload_dir}/_socket.%{SOABI_optimized}.so
+%{dynload_dir}/_sqlite3.%{SOABI_optimized}.so
+%{dynload_dir}/_ssl.%{SOABI_optimized}.so
+%{dynload_dir}/_statistics.%{SOABI_optimized}.so
+%{dynload_dir}/_struct.%{SOABI_optimized}.so
+%{dynload_dir}/array.%{SOABI_optimized}.so
+%{dynload_dir}/audioop.%{SOABI_optimized}.so
+%{dynload_dir}/binascii.%{SOABI_optimized}.so
+%{dynload_dir}/cmath.%{SOABI_optimized}.so
+%{dynload_dir}/_datetime.%{SOABI_optimized}.so
+%{dynload_dir}/fcntl.%{SOABI_optimized}.so
+%{dynload_dir}/grp.%{SOABI_optimized}.so
+%{dynload_dir}/math.%{SOABI_optimized}.so
+%{dynload_dir}/mmap.%{SOABI_optimized}.so
+%{dynload_dir}/nis.%{SOABI_optimized}.so
+%{dynload_dir}/ossaudiodev.%{SOABI_optimized}.so
+%{dynload_dir}/parser.%{SOABI_optimized}.so
+%{dynload_dir}/_posixshmem.%{SOABI_optimized}.so
+%{dynload_dir}/pyexpat.%{SOABI_optimized}.so
+%{dynload_dir}/readline.%{SOABI_optimized}.so
+%{dynload_dir}/resource.%{SOABI_optimized}.so
+%{dynload_dir}/select.%{SOABI_optimized}.so
+%{dynload_dir}/spwd.%{SOABI_optimized}.so
+%{dynload_dir}/syslog.%{SOABI_optimized}.so
+%{dynload_dir}/termios.%{SOABI_optimized}.so
+%{dynload_dir}/unicodedata.%{SOABI_optimized}.so
+%{dynload_dir}/_uuid.%{SOABI_optimized}.so
+%{dynload_dir}/xxlimited.%{SOABI_optimized}.so
+%{dynload_dir}/_xxsubinterpreters.%{SOABI_optimized}.so
+%{dynload_dir}/zlib.%{SOABI_optimized}.so
+%{dynload_dir}/_zoneinfo.%{SOABI_optimized}.so
+
+%dir %{pylibdir}/site-packages/
+%dir %{pylibdir}/site-packages/__pycache__/
+%{pylibdir}/site-packages/README.txt
+%{pylibdir}/*.py
+%dir %{pylibdir}/__pycache__/
+%{pylibdir}/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/collections/
+%dir %{pylibdir}/collections/__pycache__/
+%{pylibdir}/collections/*.py
+%{pylibdir}/collections/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/ctypes/
+%dir %{pylibdir}/ctypes/__pycache__/
+%{pylibdir}/ctypes/*.py
+%{pylibdir}/ctypes/__pycache__/*%{bytecode_suffixes}
+%{pylibdir}/ctypes/macholib
+
+%{pylibdir}/curses
+
+%dir %{pylibdir}/dbm/
+%dir %{pylibdir}/dbm/__pycache__/
+%{pylibdir}/dbm/*.py
+%{pylibdir}/dbm/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/distutils/
+%dir %{pylibdir}/distutils/__pycache__/
+%{pylibdir}/distutils/*.py
+%{pylibdir}/distutils/__pycache__/*%{bytecode_suffixes}
+%{pylibdir}/distutils/README
+%{pylibdir}/distutils/command
+
+%dir %{pylibdir}/email/
+%dir %{pylibdir}/email/__pycache__/
+%{pylibdir}/email/*.py
+%{pylibdir}/email/__pycache__/*%{bytecode_suffixes}
+%{pylibdir}/email/mime
+%doc %{pylibdir}/email/architecture.rst
+
+%{pylibdir}/encodings
+
+%{pylibdir}/html
+%{pylibdir}/http
+
+%dir %{pylibdir}/importlib/
+%dir %{pylibdir}/importlib/__pycache__/
+%{pylibdir}/importlib/*.py
+%{pylibdir}/importlib/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/json/
+%dir %{pylibdir}/json/__pycache__/
+%{pylibdir}/json/*.py
+%{pylibdir}/json/__pycache__/*%{bytecode_suffixes}
+
+%{pylibdir}/logging
+%{pylibdir}/multiprocessing
+
+%dir %{pylibdir}/sqlite3/
+%dir %{pylibdir}/sqlite3/__pycache__/
+%{pylibdir}/sqlite3/*.py
+%{pylibdir}/sqlite3/__pycache__/*%{bytecode_suffixes}
+
+%{pylibdir}/urllib
+%{pylibdir}/xml
+%{pylibdir}/zoneinfo
 
 %if "%{_lib}" == "lib64"
-%{_prefix}/lib/python%{pybasever}
+%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}
+%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages
+%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages/__pycache__/
 %endif
 
-%{_includedir}/python%{LDVERSION_optimized}/
+# "Makefile" and the config-32/64.h file are needed by
+# distutils/sysconfig.py:_init_posix(), so we include them in the core
+# package, along with their parent directories (bug 531901):
+%dir %{pylibdir}/config-%{LDVERSION_optimized}-%{platform_triplet}/
+%{pylibdir}/config-%{LDVERSION_optimized}-%{platform_triplet}/Makefile
+%dir %{_includedir}/python%{LDVERSION_optimized}/
+%{_includedir}/python%{LDVERSION_optimized}/%{_pyconfig_h}
 
-%{_bindir}/python3-config
+%{_libdir}/%{py_INSTSONAME_optimized}
+
+
+%{pylibdir}/config-%{LDVERSION_optimized}-%{platform_triplet}/*
+
+%{_includedir}/python%{LDVERSION_optimized}/*.h
+%{_includedir}/python%{LDVERSION_optimized}/internal/
+%{_includedir}/python%{LDVERSION_optimized}/cpython/
+%doc Misc/README.valgrind Misc/valgrind-python.supp Misc/gdbinit
+
+%{_bindir}/2to3-%{pybasever}
+%{_bindir}/pathfix%{pybasever}.py
+%{_bindir}/pygettext%{pybasever}.py
+%{_bindir}/msgfmt%{pybasever}.py
+
 %{_bindir}/python%{pybasever}-config
+%{_bindir}/python%{LDVERSION_optimized}-config
 %{_bindir}/python%{LDVERSION_optimized}-*-config
-%{_libdir}/libpython%{LDVERSION_optimized}.a
-%dir %{_libdir}/pkgconfig
-%{_libdir}/pkgconfig/python3.pc
-%{_libdir}/pkgconfig/python3-embed.pc
+
+%{_libdir}/libpython%{LDVERSION_optimized}.so
+%{_libdir}/pkgconfig/python-%{LDVERSION_optimized}.pc
+%{_libdir}/pkgconfig/python-%{LDVERSION_optimized}-embed.pc
 %{_libdir}/pkgconfig/python-%{pybasever}.pc
 %{_libdir}/pkgconfig/python-%{pybasever}-embed.pc
 
-%{_bindir}/2to3
-%{_bindir}/2to3-%{pybasever}
-%{_bindir}/idle3
 %{_bindir}/idle%{pybasever}
+
+%{pylibdir}/idlelib
+
+%{pylibdir}/tkinter
+%{dynload_dir}/_tkinter.%{SOABI_optimized}.so
+%{pylibdir}/turtle.py
+%{pylibdir}/__pycache__/turtle*%{bytecode_suffixes}
+%dir %{pylibdir}/turtledemo
+%{pylibdir}/turtledemo/*.py
+%{pylibdir}/turtledemo/*.cfg
+%dir %{pylibdir}/turtledemo/__pycache__/
+%{pylibdir}/turtledemo/__pycache__/*%{bytecode_suffixes}
+
+%{pylibdir}/ctypes/test
+%{pylibdir}/distutils/tests
+%{pylibdir}/sqlite3/test
+%{pylibdir}/test
+%{dynload_dir}/_ctypes_test.%{SOABI_optimized}.so
+%{dynload_dir}/_testbuffer.%{SOABI_optimized}.so
+%{dynload_dir}/_testcapi.%{SOABI_optimized}.so
+%{dynload_dir}/_testimportmultiple.%{SOABI_optimized}.so
+%{dynload_dir}/_testinternalcapi.%{SOABI_optimized}.so
+%{dynload_dir}/_testmultiphase.%{SOABI_optimized}.so
+%{dynload_dir}/_xxtestfuzz.%{SOABI_optimized}.so
+%{pylibdir}/lib2to3/tests
+%{pylibdir}/tkinter/test
+%{pylibdir}/unittest/test
 
 # Workaround for https://bugzilla.redhat.com/show_bug.cgi?id=1476593
 %undefine _debuginfo_subpackages
