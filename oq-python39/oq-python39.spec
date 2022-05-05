@@ -621,14 +621,6 @@ sed -i -e "s/'pyconfig.h'/'%{_pyconfig_h}'/" \
 # See https://github.com/fedora-python/python-rpm-porting/issues/24
 cp -p Tools/scripts/pathfix.py %{buildroot}%{_bindir}/pathfix%{pybasever}.py
 
-# Install i18n tools to bindir
-# They are also in python2, so we version them
-# https://bugzilla.redhat.com/show_bug.cgi?id=1571474
-for tool in pygettext msgfmt; do
-  cp -p Tools/i18n/${tool}.py %{buildroot}%{_bindir}/${tool}%{pybasever}.py
-  ln -s ${tool}%{pybasever}.py %{buildroot}%{_bindir}/${tool}3.py
-done
-
 # Switch all shebangs to refer to the specific Python version.
 # This currently only covers files matching ^[a-zA-Z0-9_]+\.py$,
 # so handle files named using other naming scheme separately.
