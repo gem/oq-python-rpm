@@ -7,10 +7,10 @@
 # Top-level metadata
 # ==================
 
-%global pybasever 3.9
+%global pybasever 3.8
 
 # pybasever without the dot:
-%global pyshortver 39
+%global pyshortver 38
 
 Name: oq-python%{pyshortver}
 Summary: Version %{pybasever} of the Python interpreter for OpenQuake
@@ -25,7 +25,6 @@ Version: %{general_version}%{?prerel:~%{prerel}}
 Release: 1%{?dist}
 License: Python
 
-
 # ==================================
 # Conditionals controlling the build
 # ==================================
@@ -33,65 +32,24 @@ License: Python
 # Note that the bcond macros are named for the CLI option they create.
 # "%%bcond_without" means "ENABLE by default and create a --without option"
 
-# When bootstrapping python3, we need to build setuptools.
-# but setuptools BR python3-devel and that brings in python3-rpm-generators;
-# python3-rpm-generators needs python3-setuptools, so we cannot have it yet.
-#
-# We also use the previous build of Python in "make regen-all"
-# and in "distutils.tests.test_bdist_rpm".
-#
-# Procedure: https://fedoraproject.org/wiki/SIGs/Python/UpgradingPython
-#
-#   IMPORTANT: When bootstrapping, it's very likely the wheels for pip and
-#   setuptools are not available. Turn off the rpmwheels bcond until
-#   the two packages are built with wheels to get around the issue.
-%bcond_with bootstrap
-
 # Expensive optimizations (mainly, profile-guided optimizations)
+%ifarch %{ix86} x86_64
 %bcond_without optimizations
-
-# https://fedoraproject.org/wiki/Changes/PythonNoSemanticInterpositionSpeedup
-%bcond_without no_semantic_interposition
+%else
+# On some architectures, the optimized build takes tens of hours, possibly
+# longer than Koji's 24-hour timeout. Disable optimizations here.
+%bcond_with optimizations
+%endif
 
 # Run the test suite in %%check
-%bcond_without tests
+%bcond_with tests
 
 # Main interpreter loop optimization
 %bcond_without computed_gotos
 
-# https://fedoraproject.org/wiki/Changes/Python_Upstream_Architecture_Names
-# For a very long time we have converted "upstream architecture names" to "Fedora names".
-# This made sense at the time, see https://github.com/pypa/manylinux/issues/687#issuecomment-666362947
-# However, with manylinux wheels popularity growth, this is now a problem.
-# Wheels built on a Linux that doesn't do this were not compatible with ours and vice versa.
-# We now have a compatibility layer to workaround a problem,
-# but we also no longer use the legacy arch names in Fedora 34+.
-# This bcond controls the behavior. The defaults should be good for anybody.
-%if 0%{?fedora} >= 34 || 0%{?rhel} >= 9
-%bcond_with legacy_archnames
-%else
-%bcond_without legacy_archnames
-%endif
-
-# In RHEL 9+, we obsolete/provide Platform Python from regular Python
-# This is only appropriate for the main Python build
-%if 0%{?rhel} >= 9 && %{with main_python}
-%bcond_without rhel8_compat_shims
-%else
-%bcond_with rhel8_compat_shims
-%endif
-
-
 # =====================
 # General global macros
 # =====================
-
-# Make sure that the proper installation of python is used by macros
-%define __python3 %{_bindir}/python%{pybasever}
-%define __python %{__python3}
-
-%global pkgname python%{pybasever}
-%global exename python%{pybasever}
 
 %global pylibdir %{_libdir}/python%{pybasever}
 %global dynload_dir %{pylibdir}/lib-dynload
@@ -102,21 +60,7 @@ License: Python
 
 %global LDVERSION_optimized %{pybasever}%{ABIFLAGS_optimized}
 
-# When we use the upstream arch triplets, we convert them from the legacy ones
-# This is reversed in prep when %%with legacy_archnames, so we keep both macros
-%global platform_triplet_legacy %{_arch}-linux%{_gnu}
-%global platform_triplet_upstream %{expand:%(echo %{platform_triplet_legacy} | sed -E \\
-    -e 's/^arm(eb)?-linux-gnueabi$/arm\\1-linux-gnueabihf/' \\
-    -e 's/^mips64(el)?-linux-gnu$/mips64\\1-linux-gnuabi64/' \\
-    -e 's/^ppc(64)?(le)?-linux-gnu$/powerpc\\1\\2-linux-gnu/')}
-%if %{with legacy_archnames}
-%global platform_triplet %{platform_triplet_legacy}
-%else
-%global platform_triplet %{platform_triplet_upstream}
-%endif
-
-%global SOABI_optimized cpython-%{pyshortver}%{ABIFLAGS_optimized}-%{platform_triplet}
-
+%global SOABI_optimized cpython-%{pyshortver}%{ABIFLAGS_optimized}-%{_arch}-linux%{_gnu}
 
 # All bytecode files are in a __pycache__ subdirectory, with a name
 # reflecting the version of the bytecode.
@@ -129,13 +73,6 @@ License: Python
 #   foo/__pycache__/bar.cpython-%%{pyshortver}.opt-2.pyc
 %global bytecode_suffixes .cpython-%{pyshortver}*.pyc
 
-# libmpdec (mpdecimal package in Fedora) is tightly coupled with the
-# decimal module. We keep it bundled as to avoid incompatibilities
-# with the packaged version.
-# The version information can be found at Modules/_decimal/libmpdec/mpdecimal.h
-# defined as MPD_VERSION.
-%global libmpdec_version 2.5.0
-
 # Python's configure script defines SOVERSION, and this is used in the Makefile
 # to determine INSTSONAME, the name of the libpython DSO:
 #   LDLIBRARY='libpython$(VERSION).so'
@@ -146,17 +83,54 @@ License: Python
 %global py_SOVERSION 1.0
 %global py_INSTSONAME_optimized libpython%{LDVERSION_optimized}.so.%{py_SOVERSION}
 
+# Make sure that the proper installation of python is used by macros
+%define __python3 %{_bindir}/python3.8
+%define __python %{__python3}
 
 # Disable automatic bytecompilation. The python3 binary is not yet be
 # available in /usr/bin when Python is built. Also, the bytecompilation fails
 # on files that test invalid syntax.
 %undefine py_auto_byte_compile
 
+# Backported from EPEL:
+#  https://src.fedoraproject.org/cgit/rpms/python36.git/tree/?h=epel7&id=ee1b6fe2f274b9a4b526263f42d208bbfbe08a2f
+# We want to byte-compile the .py files within the packages using the new
+# python3 binary.
+#
+# Unfortunately, rpmbuild's infrastructure requires us to jump through some
+# hoops to avoid byte-compiling with the system python version:
+#   /usr/lib/rpm/redhat/macros sets up build policy that (amongst other things)
+# defines __os_install_post.  In particular, "brp-python-bytecompile" is
+# invoked without an argument thus using the wrong version of python3
+# (/usr/bin/python3.6, rather than the freshly built python3), thus leading to
+# numerous syntax errors, and incorrect magic numbers in the .pyc files.  We
+# thus override __os_install_post to avoid invoking this script:
+%global __os_install_post /usr/lib/rpm/brp-compress \
+  %{!?__debug_package:/usr/lib/rpm/brp-strip %{__strip}} \
+  /usr/lib/rpm/brp-strip-static-archive %{__strip} \
+  /usr/lib/rpm/brp-strip-comment-note %{__strip} %{__objdump} \
+  /usr/lib/rpm/brp-python-hardlink
+# to remove the invocation of brp-python-bytecompile, whilst keeping the
+# invocation of brp-python-hardlink (since this should still work for python3
+# pyc files)
+
+# For multilib support, files that are different between 32- and 64-bit arches
+# need different filenames. Use "64" or "32" according to the word size.
+# Currently, the best way to determine an architecture's word size happens to
+# be checking %%{_lib}.
+%if "%{_lib}" == "lib64"
+%global wordsize 64
+%else
+%global wordsize 32
+%endif
+
+
 # =======================
 # Build-time requirements
 # =======================
 
 # (keep this list alphabetized)
+
 BuildRequires: autoconf
 BuildRequires: bluez-libs-devel
 BuildRequires: bzip2
@@ -166,6 +140,9 @@ BuildRequires: expat-devel
 
 BuildRequires: findutils
 BuildRequires: gcc-c++
+%if %{with gdbm}
+BuildRequires: gdbm-devel
+%endif
 BuildRequires: git-core
 BuildRequires: glibc-all-langpacks
 BuildRequires: glibc-devel
@@ -184,7 +161,7 @@ BuildRequires: ncurses-devel
 BuildRequires: openssl-devel
 BuildRequires: pkgconfig
 BuildRequires: readline-devel
-BuildRequires: redhat-rpm-config
+BuildRequires: redhat-rpm-config 
 BuildRequires: sqlite-devel
 BuildRequires: gdb
 
@@ -194,6 +171,10 @@ BuildRequires: tix-devel
 BuildRequires: tk-devel
 BuildRequires: tzdata
 
+%if %{with valgrind}
+BuildRequires: valgrind-devel
+%endif
+
 BuildRequires: xz-devel
 BuildRequires: zlib-devel
 
@@ -201,17 +182,11 @@ BuildRequires: /usr/bin/dtrace
 
 # workaround http://bugs.python.org/issue19804 (test_uuid requires ifconfig)
 BuildRequires: /usr/sbin/ifconfig
-
-%if %{without bootstrap}
-# for make regen-all and distutils.tests.test_bdist_rpm
-BuildRequires: python%{pybasever}
-# for proper automatic provides
-BuildRequires: python3-rpm-generators
-%endif
-
 # =======================
 # Source code and patches
 # =======================
+
+
 Source0: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz
 Source1: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz.asc
 Source2: %{url}static/files/pubkeys.txt
@@ -337,13 +312,18 @@ Patch371: 00371-revert-bpo-1596321-fix-threading-_shutdown-for-the-main-thread-g
 #
 #     https://github.com/fedora-python/cpython
 
+
 # ==========================================
 # Descriptions, and metadata for subpackages
 # ==========================================
 
-Provides: oq-python3
-Provides: oq-python%{pyshortver}
-Provides: oq-python%{pybasever} = %{version}-%{release}
+# We'll not provide this, on purpose
+# No package in Fedora shall ever depend on flatpackage via this
+%global __requires_exclude ^python\\(abi\\) = 3\\..$
+%global __provides_exclude ^python\\(abi\\) = 3\\..$
+
+Provides: oq-python3 
+Provides: oq-python39
 Obsoletes: oq-python35 oq-python36 oq-python37 oq-python38
 
 %description
@@ -360,6 +340,14 @@ Python %{pybasever} package for OpenQuake
 # Apply patches up to 188
 %autopatch -M 188
 
+%if %{with rpmwheels}
+# Temporary workaround for https://bugzilla.redhat.com/show_bug.cgi?id=1954999
+%{?!apply_patch:%define apply_patch(qp:m:) {%__apply_patch %**}}
+
+%apply_patch -q %{PATCH189}
+rm Lib/ensurepip/_bundled/*.whl
+%endif
+
 # Apply the remaining patches
 %autopatch -m 190
 
@@ -374,6 +362,12 @@ rm -r Modules/expat
 # Remove files that should be generated by the build
 # (This is after patching, so that we can use patches directly from upstream)
 rm configure pyconfig.h.in
+
+# When we use the legacy arch names, we need to change them in configure.ac
+%if %{with legacy_archnames}
+sed -i configure.ac \
+    -e 's/\b%{platform_triplet_upstream}\b/%{platform_triplet_legacy}/'
+%endif
 
 
 # ======================================================
@@ -403,7 +397,9 @@ topdir=$(pwd)
 %global computed_gotos_flag no
 %endif
 
-%if %{with optimizations}
+# Compile toolchain in EL7 is too old to support optimizations
+# instead of using a custom newer gcc we disable optimizations on EL7
+%if %{with optimizations} && 0%{!?el7}
 %global optimizations_flag "--enable-optimizations"
 %else
 %global optimizations_flag "--disable-optimizations"
@@ -425,6 +421,7 @@ export LINKCC="gcc"
 export CFLAGS="$CFLAGS $(pkg-config --cflags openssl)"
 export LDFLAGS="%{extension_ldflags} -g $(pkg-config --libs-only-L openssl)"
 export LDFLAGS_NODIST="%{build_ldflags}%{?with_no_semantic_interposition: -fno-semantic-interposition} -g $(pkg-config --libs-only-L openssl)"
+
 # We can build several different configurations of Python: regular and debug.
 # Define a common function that does one build:
 BuildPython() {
@@ -451,12 +448,16 @@ BuildPython() {
   --enable-ipv6 \
   --enable-shared \
   --with-computed-gotos=%{computed_gotos_flag} \
+  --with-dbmliborder=gdbm:ndbm:bdb \
   --with-system-expat \
   --with-system-ffi \
   --enable-loadable-sqlite-extensions \
   --with-dtrace \
   --with-lto \
   --with-ssl-default-suites=openssl \
+%if %{with valgrind}
+  --with-valgrind \
+%endif
   $ExtraConfigArgs \
   %{nil}
 
@@ -472,9 +473,6 @@ BuildPython() {
 
   popd
   echo FINISHED: BUILD OF PYTHON FOR CONFIGURATION: $ConfName
-
-}
-
 # Call the above to build each configuration.
 
 BuildPython optimized \
@@ -501,6 +499,7 @@ topdir=$(pwd)
 %global _pyconfig64_h pyconfig-64.h
 %global _pyconfig_h pyconfig-%{__isa_bits}.h
 
+
 # Use a common function to do an install for all our configurations:
 InstallPython() {
 
@@ -519,11 +518,15 @@ InstallPython() {
 
   popd
 
+%if %{with gdb_hooks}
+  # See comment on $DirHoldingGdbPy above
+  PathOfGdbPy=$DirHoldingGdbPy/$PyInstSoName-%{version}-%{release}.%{_arch}.debug-gdb.py
+  cp Tools/gdb/libpython.py %{buildroot}$PathOfGdbPy
+%endif # with gdb_hooks
+
   # Rename the -devel script that differs on different arches to arch specific name
   mv %{buildroot}%{_bindir}/python${LDVersion}-{,`uname -m`-}config
-  echo -e '#!/bin/sh\nexec `dirname $0`/python'${LDVersion}'-`uname -m`-config "$@"' > \
-    %{buildroot}%{_bindir}/python${LDVersion}-config
-  echo '[ $? -eq 127 ] && echo "Could not find python'${LDVersion}'-`uname -m`-config. Look around to see available arches." >&2' >> \
+  echo -e '#!/bin/sh\nexec %{_bindir}/python'${LDVersion}'-`uname -m`-config "$@"' > \
     %{buildroot}%{_bindir}/python${LDVersion}-config
     chmod +x %{buildroot}%{_bindir}/python${LDVersion}-config
 
@@ -574,14 +577,21 @@ sed -i -e "s/'pyconfig.h'/'%{_pyconfig_h}'/" \
   %{buildroot}%{pylibdir}/distutils/sysconfig.py \
   %{buildroot}%{pylibdir}/sysconfig.py
 
+# Install pathfix.py to bindir
+# See https://github.com/fedora-python/python-rpm-porting/issues/24
+# cp -p Tools/scripts/pathfix.py %{buildroot}%{_bindir}/
+
 # Switch all shebangs to refer to the specific Python version.
 # This currently only covers files matching ^[a-zA-Z0-9_]+\.py$,
 # so handle files named using other naming scheme separately.
 LD_LIBRARY_PATH=./build/optimized ./build/optimized/python \
   Tools/scripts/pathfix.py \
   -i "%{_bindir}/python%{pybasever}" -pn \
-  %{buildroot} \
-  %{?with_gdb_hooks:%{buildroot}$DirHoldingGdbPy/*.py}
+  %{buildroot}
+
+# Remove tests for python3-tools which was removed in
+# https://bugzilla.redhat.com/show_bug.cgi?id=1312030
+rm -rf %{buildroot}%{pylibdir}/test/test_tools
 
 # Remove shebang lines from .py files that aren't executable, and
 # remove executability from .py files that don't have a shebang line:
@@ -598,24 +608,16 @@ find %{buildroot} -name \*.bat -exec rm {} \;
 find %{buildroot}/ -name "*~" -exec rm -f {} \;
 find . -name "*~" -exec rm -f {} \;
 
+# Get rid of a stray copy of the license:
+rm %{buildroot}%{pylibdir}/LICENSE.txt
+
 # Do bytecompilation with the newly installed interpreter.
 # This is similar to the script in macros.pybytecompile
 # compile *.pyc
-# Python CMD line options:
-# -s - don't add user site directory to sys.path
-# -B - don't write .pyc files on import
-# compileall CMD line options:
-# -f - force rebuild even if timestamps are up to date
-# -o - optimization levels to run compilation with
-# -s - part of path to left-strip from path to source file (buildroot)
-# -p - path to add as prefix to path to source file (/ to make it absolute)
-# --hardlink-dupes - hardlink different optimization level pycs together if identical (saves space)
-LD_LIBRARY_PATH="%{buildroot}%{dynload_dir}/:%{buildroot}%{_libdir}" \
-%{buildroot}%{_bindir}/python%{pybasever} -s -B -m compileall \
--f %{_smp_mflags} -o 0 -o 1 -o 2 -s %{buildroot} -p / %{buildroot} --hardlink-dupes || :
-
-# Turn this BRP off, it is done by compileall2 --hardlink-dupes above
-%global __brp_python_hardlink %{nil}
+find %{buildroot} -type f -a -name "*.py" -print0 | \
+    LD_LIBRARY_PATH="%{buildroot}%{dynload_dir}/:%{buildroot}%{_libdir}" \
+    PYTHONPATH="%{buildroot}%{_libdir}/python%{pybasever} %{buildroot}%{_libdir}/python%{pybasever}/site-packages" \
+    xargs -0 %{buildroot}%{_bindir}/python%{pybasever} -O -c 'import py_compile, sys; [py_compile.compile(f, dfile=f.partition("%{buildroot}")[2], optimize=opt) for opt in range(3) for f in sys.argv[1:]]' || :
 
 # Since we have pathfix.py in bindir, this is created, but we don't want it
 rm -rf %{buildroot}%{_bindir}/__pycache__
@@ -623,40 +625,6 @@ rm -rf %{buildroot}%{_bindir}/__pycache__
 # Fixup permissions for shared libraries from non-standard 555 to standard 755:
 find %{buildroot} -perm 555 -exec chmod 755 {} \;
 
-# There's 2to3-X.X executable and 2to3 soft link to it.
-# No reason to have both, so keep only 2to3 as an executable.
-# See https://bugzilla.redhat.com/show_bug.cgi?id=1111275
-mv %{buildroot}%{_bindir}/2to3-%{pybasever} %{buildroot}%{_bindir}/2to3
-
-%if %{without main_python}
-# Remove stuff that would conflict with python3 package
-rm %{buildroot}%{_bindir}/python3
-rm %{buildroot}%{_bindir}/pydoc3
-rm %{buildroot}%{_bindir}/idle3
-rm %{buildroot}%{_bindir}/python3-*
-rm %{buildroot}%{_bindir}/2to3
-rm %{buildroot}%{_libdir}/libpython3.so
-rm %{buildroot}%{_mandir}/man1/python3.1*
-rm %{buildroot}%{_libdir}/pkgconfig/python3.pc
-rm %{buildroot}%{_libdir}/pkgconfig/python3-embed.pc
-%else
-# Link the unversioned stuff
-# https://fedoraproject.org/wiki/Changes/Python_means_Python3
-ln -s ./python3 %{buildroot}%{_bindir}/python
-ln -s ./pydoc3 %{buildroot}%{_bindir}/pydoc
-ln -s ./idle3 %{buildroot}%{_bindir}/idle
-ln -s ./python3-config %{buildroot}%{_bindir}/python-config
-ln -s ./python3.1 %{buildroot}%{_mandir}/man1/python.1
-ln -s ./python3.pc %{buildroot}%{_libdir}/pkgconfig/python.pc
-%endif
-
-# Remove large, autogenerated sources and keep only the non-optimized pycache
-for file in %{buildroot}%{pylibdir}/pydoc_data/topics.py $(grep --include='*.py' -lr %{buildroot}%{pylibdir}/encodings -e 'Python Character Mapping Codec .* from .* with gencodec.py'); do
-    directory=$(dirname ${file})
-    module=$(basename ${file%%.py})
-    mv ${directory}/{__pycache__/${module}.cpython-%{pyshortver}.pyc,${module}.pyc}
-    rm ${directory}/{__pycache__/${module}.cpython-%{pyshortver}.opt-?.pyc,${module}.py}
-done
 # ======================================================
 # Checks for packaging issues
 # ======================================================
@@ -681,27 +649,6 @@ ldd %{buildroot}/%{dynload_dir}/_curses*.so \
     | grep curses \
     | grep libncurses.so && (echo "_curses.so linked against libncurses.so" ; exit 1)
 
-# Ensure that the debug modules are linked against the debug libpython, and
-# likewise for the optimized modules and libpython:
-for Module in %{buildroot}/%{dynload_dir}/*.so ; do
-    case $Module in
-    *.%{SOABI_debug})
-        ldd $Module | grep %{py_INSTSONAME_optimized} &&
-            (echo Debug module $Module linked against optimized %{py_INSTSONAME_optimized} ; exit 1)
-
-        ;;
-    *.%{SOABI_optimized})
-        ldd $Module | grep %{py_INSTSONAME_debug} &&
-            (echo Optimized module $Module linked against debug %{py_INSTSONAME_debug} ; exit 1)
-        ;;
-    esac
-done
-
-# Verify that the bundled libmpdec version python was compiled with, is the same version we have virtual
-# provides for in the SPEC.
-test "$(LD_LIBRARY_PATH=$(pwd)/build/optimized $(pwd)/build/optimized/python -c 'import decimal; print(decimal.__libmpdec_version__)')" = \
-     "%{libmpdec_version}"
-
 # ======================================================
 # Running the upstream test suite
 # ======================================================
@@ -711,45 +658,65 @@ CheckPython() {
   ConfName=$1
   ConfDir=$(pwd)/build/$ConfName
 
+  # Fedora sets explicit minimum/maximum TLS versions.
+  # Python's test suite assumes that the minimum/maximum version is set to
+  # a magic marker. We workaround the test problem by setting:
+  export OPENSSL_CONF=/non-existing-file
+  # https://bugzilla.redhat.com/show_bug.cgi?id=1618753
+  # https://bugzilla.redhat.com/show_bug.cgi?id=1778357
+  # https://bugs.python.org/issue35045
+  # https://bugs.python.org/issue38815
+
   echo STARTING: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
 
   # Note that we're running the tests using the version of the code in the
   # builddir, not in the buildroot.
 
-  # Show some info, helpful for debugging test failures
-  LD_LIBRARY_PATH=$ConfDir $ConfDir/python -m test.pythoninfo
-
-  # Run the upstream test suite
-  # --timeout=1800: kill test running for longer than 30 minutes
-  # test_distutils
-  #   distutils.tests.test_bdist_rpm tests fail when bootstraping the Python
-  #   package: rpmbuild requires /usr/bin/pythonX.Y to be installed
-  # test_gdb on arm on Fedora 33:
-  #   https://bugzilla.redhat.com/show_bug.cgi?id=1846390
+  # Run the upstream test suite, setting "WITHIN_PYTHON_RPM_BUILD" so that the
+  # our non-standard decorators take effect on the relevant tests:
+  #   @unittest._skipInRpmBuild(reason)
+  #   @unittest._expectedFailureInRpmBuild
+  WITHIN_PYTHON_RPM_BUILD= \
   LD_LIBRARY_PATH=$ConfDir $ConfDir/python -m test.regrtest \
-    -wW --slowest -j0 --timeout=1800 \
-    %if %{with bootstrap}
+    -wW --slowest --findleaks \
     -x test_distutils \
-    %endif
+    -x test_bdist_rpm \
     %ifarch %{mips64}
     -x test_ctypes \
     %endif
-    %ifarch %{arm}
-    %if 0%{?fedora} < 34 && 0%{?rhel} < 9
-    -x test_gdb \
-    %endif
+    %ifarch ppc64le
+    -x test_buffer \
+    -x test_tarfile \
+    -x test_ssl \
     %endif
 
   echo FINISHED: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
 
 }
 
+%if %{with tests}
+
+# Check each of the configurations:
+CheckPython optimized
+
+%endif
+
+
 # ======================================================
 # Scriptlets
 # ======================================================
 
+# Convert lib64 symlink into a real dir to avoid transaction conflicts during upgrades.
+# See: https://fedoraproject.org/wiki/Packaging:Directory_Replacement#Scriptlet_to_replace_a_symlink_to_a_directory_with_a_directory
+%pretrans -p <lua>
+path = "%{_libdir}"
+st = posix.stat(path)
+if st and st.type == "link" then
+  os.remove(path)
+end
+
 %files
-%doc README.rst
+%doc README.rst LICENSE
 
 # In /opt/openquake we are the owners of bin, usr and so on
 %dir %{_prefix}
@@ -760,285 +727,39 @@ CheckPython() {
 %endif
 %dir %{_includedir}
 %dir %{_datadir}
-%dir %{pylibdir}
-%dir %{dynload_dir}
 
-%{pylibdir}/lib2to3
-%if %{without flatpackage}
-%exclude %{pylibdir}/lib2to3/tests
-%endif
+%{_bindir}/pydoc3
+%{_bindir}/python3
+%{_bindir}/pip3
 
-%dir %{pylibdir}/unittest/
-%dir %{pylibdir}/unittest/__pycache__/
-%{pylibdir}/unittest/*.py
-%{pylibdir}/unittest/__pycache__/*%{bytecode_suffixes}
+%{_bindir}/pydoc%{pybasever}
+%{_bindir}/python%{pybasever}
+%{_bindir}/pip%{pybasever}
+%{_bindir}/easy_install-%{pybasever}
+%{_mandir}
 
-%dir %{pylibdir}/asyncio/
-%dir %{pylibdir}/asyncio/__pycache__/
-%{pylibdir}/asyncio/*.py
-%{pylibdir}/asyncio/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/venv/
-%dir %{pylibdir}/venv/__pycache__/
-%{pylibdir}/venv/*.py
-%{pylibdir}/venv/__pycache__/*%{bytecode_suffixes}
-%{pylibdir}/venv/scripts
-
-%{pylibdir}/wsgiref
-%{pylibdir}/xmlrpc
-
-%dir %{pylibdir}/ensurepip/
-%dir %{pylibdir}/ensurepip/__pycache__/
-%{pylibdir}/ensurepip/*.py
-%{pylibdir}/ensurepip/__pycache__/*%{bytecode_suffixes}
-
-%if %{with rpmwheels}
-%exclude %{pylibdir}/ensurepip/_bundled
-%else
-%dir %{pylibdir}/ensurepip/_bundled
-%{pylibdir}/ensurepip/_bundled/*.whl
-%{pylibdir}/ensurepip/_bundled/__init__.py
-%{pylibdir}/ensurepip/_bundled/__pycache__/*%{bytecode_suffixes}
-%endif
-
-%dir %{pylibdir}/concurrent/
-%dir %{pylibdir}/concurrent/__pycache__/
-%{pylibdir}/concurrent/*.py
-%{pylibdir}/concurrent/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/concurrent/futures/
-%dir %{pylibdir}/concurrent/futures/__pycache__/
-%{pylibdir}/concurrent/futures/*.py
-%{pylibdir}/concurrent/futures/__pycache__/*%{bytecode_suffixes}
-
-%{pylibdir}/pydoc_data
-
-%{dynload_dir}/_blake2.%{SOABI_optimized}.so
-%{dynload_dir}/_md5.%{SOABI_optimized}.so
-%{dynload_dir}/_sha1.%{SOABI_optimized}.so
-%{dynload_dir}/_sha256.%{SOABI_optimized}.so
-%{dynload_dir}/_sha3.%{SOABI_optimized}.so
-%{dynload_dir}/_sha512.%{SOABI_optimized}.so
-
-%{dynload_dir}/_asyncio.%{SOABI_optimized}.so
-%{dynload_dir}/_bisect.%{SOABI_optimized}.so
-%{dynload_dir}/_bz2.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_cn.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_hk.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_iso2022.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_jp.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_kr.%{SOABI_optimized}.so
-%{dynload_dir}/_codecs_tw.%{SOABI_optimized}.so
-%{dynload_dir}/_contextvars.%{SOABI_optimized}.so
-%{dynload_dir}/_crypt.%{SOABI_optimized}.so
-%{dynload_dir}/_csv.%{SOABI_optimized}.so
-%{dynload_dir}/_ctypes.%{SOABI_optimized}.so
-%{dynload_dir}/_curses.%{SOABI_optimized}.so
-%{dynload_dir}/_curses_panel.%{SOABI_optimized}.so
-%{dynload_dir}/_decimal.%{SOABI_optimized}.so
-%{dynload_dir}/_elementtree.%{SOABI_optimized}.so
-%{dynload_dir}/_hashlib.%{SOABI_optimized}.so
-%{dynload_dir}/_heapq.%{SOABI_optimized}.so
-%{dynload_dir}/_json.%{SOABI_optimized}.so
-%{dynload_dir}/_lsprof.%{SOABI_optimized}.so
-%{dynload_dir}/_lzma.%{SOABI_optimized}.so
-%{dynload_dir}/_multibytecodec.%{SOABI_optimized}.so
-%{dynload_dir}/_multiprocessing.%{SOABI_optimized}.so
-%{dynload_dir}/_opcode.%{SOABI_optimized}.so
-%{dynload_dir}/_pickle.%{SOABI_optimized}.so
-%{dynload_dir}/_posixsubprocess.%{SOABI_optimized}.so
-%{dynload_dir}/_queue.%{SOABI_optimized}.so
-%{dynload_dir}/_random.%{SOABI_optimized}.so
-%{dynload_dir}/_socket.%{SOABI_optimized}.so
-%{dynload_dir}/_sqlite3.%{SOABI_optimized}.so
-%{dynload_dir}/_ssl.%{SOABI_optimized}.so
-%{dynload_dir}/_statistics.%{SOABI_optimized}.so
-%{dynload_dir}/_struct.%{SOABI_optimized}.so
-%{dynload_dir}/array.%{SOABI_optimized}.so
-%{dynload_dir}/audioop.%{SOABI_optimized}.so
-%{dynload_dir}/binascii.%{SOABI_optimized}.so
-%{dynload_dir}/cmath.%{SOABI_optimized}.so
-%{dynload_dir}/_datetime.%{SOABI_optimized}.so
-%{dynload_dir}/fcntl.%{SOABI_optimized}.so
-%{dynload_dir}/grp.%{SOABI_optimized}.so
-%{dynload_dir}/math.%{SOABI_optimized}.so
-%{dynload_dir}/mmap.%{SOABI_optimized}.so
-%{dynload_dir}/nis.%{SOABI_optimized}.so
-%{dynload_dir}/ossaudiodev.%{SOABI_optimized}.so
-%{dynload_dir}/parser.%{SOABI_optimized}.so
-%{dynload_dir}/_posixshmem.%{SOABI_optimized}.so
-%{dynload_dir}/pyexpat.%{SOABI_optimized}.so
-%{dynload_dir}/readline.%{SOABI_optimized}.so
-%{dynload_dir}/resource.%{SOABI_optimized}.so
-%{dynload_dir}/select.%{SOABI_optimized}.so
-%{dynload_dir}/spwd.%{SOABI_optimized}.so
-%{dynload_dir}/syslog.%{SOABI_optimized}.so
-%{dynload_dir}/termios.%{SOABI_optimized}.so
-%{dynload_dir}/unicodedata.%{SOABI_optimized}.so
-%{dynload_dir}/_uuid.%{SOABI_optimized}.so
-%{dynload_dir}/xxlimited.%{SOABI_optimized}.so
-%{dynload_dir}/_xxsubinterpreters.%{SOABI_optimized}.so
-%{dynload_dir}/zlib.%{SOABI_optimized}.so
-%{dynload_dir}/_zoneinfo.%{SOABI_optimized}.so
-
-%dir %{pylibdir}/site-packages/
-%dir %{pylibdir}/site-packages/__pycache__/
-%{pylibdir}/site-packages/README.txt
-%{pylibdir}/*.py
-%dir %{pylibdir}/__pycache__/
-%{pylibdir}/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/collections/
-%dir %{pylibdir}/collections/__pycache__/
-%{pylibdir}/collections/*.py
-%{pylibdir}/collections/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/ctypes/
-%dir %{pylibdir}/ctypes/__pycache__/
-%{pylibdir}/ctypes/*.py
-%{pylibdir}/ctypes/__pycache__/*%{bytecode_suffixes}
-%{pylibdir}/ctypes/macholib
-
-%{pylibdir}/curses
-
-%dir %{pylibdir}/distutils/
-%dir %{pylibdir}/distutils/__pycache__/
-%{pylibdir}/distutils/*.py
-%{pylibdir}/distutils/__pycache__/*%{bytecode_suffixes}
-%{pylibdir}/distutils/README
-%{pylibdir}/distutils/command
-
-%dir %{pylibdir}/email/
-%dir %{pylibdir}/email/__pycache__/
-%{pylibdir}/email/*.py
-%{pylibdir}/email/__pycache__/*%{bytecode_suffixes}
-%{pylibdir}/email/mime
-%doc %{pylibdir}/email/architecture.rst
-
-%{pylibdir}/encodings
-
-%{pylibdir}/html
-%{pylibdir}/http
-
-%dir %{pylibdir}/importlib/
-%dir %{pylibdir}/importlib/__pycache__/
-%{pylibdir}/importlib/*.py
-%{pylibdir}/importlib/__pycache__/*%{bytecode_suffixes}
-
-%dir %{pylibdir}/json/
-%dir %{pylibdir}/json/__pycache__/
-%{pylibdir}/json/*.py
-%{pylibdir}/json/__pycache__/*%{bytecode_suffixes}
-
-%{pylibdir}/logging
-%{pylibdir}/multiprocessing
-
-%dir %{pylibdir}/sqlite3/
-%dir %{pylibdir}/sqlite3/__pycache__/
-%{pylibdir}/sqlite3/*.py
-%{pylibdir}/sqlite3/__pycache__/*%{bytecode_suffixes}
-
-%if %{without flatpackage}
-%exclude %{pylibdir}/turtle.py
-%exclude %{pylibdir}/__pycache__/turtle*%{bytecode_suffixes}
-%endif
-
-%{pylibdir}/urllib
-%{pylibdir}/xml
-%{pylibdir}/zoneinfo
+%{pylibdir}/
 
 %if "%{_lib}" == "lib64"
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages
-%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages/__pycache__/
+%{_prefix}/lib/python%{pybasever}
 %endif
 
-# "Makefile" and the config-32/64.h file are needed by
-# distutils/sysconfig.py:_init_posix(), so we include them in the core
-# package, along with their parent directories (bug 531901):
-%dir %{pylibdir}/config-%{LDVERSION_optimized}-%{platform_triplet}/
-%{pylibdir}/config-%{LDVERSION_optimized}-%{platform_triplet}/Makefile
-%dir %{_includedir}/python%{LDVERSION_optimized}/
-%{_includedir}/python%{LDVERSION_optimized}/%{_pyconfig_h}
+%{_includedir}/python%{LDVERSION_optimized}/
 
-%{_libdir}/%{py_INSTSONAME_optimized}
-%if %{with main_python}
-%{_libdir}/libpython3.so
-%endif
-
-
-%if %{with main_python}
-%{_bindir}/2to3
-%endif
-
-%{pylibdir}/config-%{LDVERSION_optimized}-%{platform_triplet}/*
-%if %{without flatpackage}
-%exclude %{pylibdir}/config-%{LDVERSION_optimized}-%{platform_triplet}/Makefile
-%exclude %{_includedir}/python%{LDVERSION_optimized}/%{_pyconfig_h}
-%endif
-%{_includedir}/python%{LDVERSION_optimized}/*.h
-%{_includedir}/python%{LDVERSION_optimized}/internal/
-%{_includedir}/python%{LDVERSION_optimized}/cpython/
-
+%{_bindir}/python3-config
 %{_bindir}/python%{pybasever}-config
-%{_bindir}/python%{LDVERSION_optimized}-config
 %{_bindir}/python%{LDVERSION_optimized}-*-config
-%{_libdir}/libpython%{LDVERSION_optimized}.so
-%{_libdir}/pkgconfig/python-%{LDVERSION_optimized}.pc
-%{_libdir}/pkgconfig/python-%{LDVERSION_optimized}-embed.pc
+%{_libdir}/libpython%{LDVERSION_optimized}.a
+%dir %{_libdir}/pkgconfig
+%{_libdir}/pkgconfig/python3.pc
+%{_libdir}/pkgconfig/python3-embed.pc
 %{_libdir}/pkgconfig/python-%{pybasever}.pc
 %{_libdir}/pkgconfig/python-%{pybasever}-embed.pc
 
-%if %{with rhel8_compat_shims}
-%{_libexecdir}/platform-python-config
-%{_libexecdir}/platform-python%{pybasever}-config
-%{_libexecdir}/platform-python%{LDVERSION_optimized}-config
-%{_libexecdir}/platform-python%{pybasever}-*-config
-%{_libexecdir}/platform-python%{LDVERSION_optimized}-*-config
-%endif
-
-%if %{with main_python}
-%{_bindir}/idle*
-%else
+%{_bindir}/2to3
+%{_bindir}/2to3-%{pybasever}
+%{_bindir}/idle3
 %{_bindir}/idle%{pybasever}
-%endif
-
-%{pylibdir}/idlelib
-
-%if %{with main_python}
-%{_metainfodir}/idle3.appdata.xml
-%{_datadir}/applications/idle3.desktop
-%{_datadir}/icons/hicolor/*/apps/idle3.*
-%endif
-
-%{pylibdir}/tkinter
-%if %{without flatpackage}
-%exclude %{pylibdir}/tkinter/test
-%endif
-%{dynload_dir}/_tkinter.%{SOABI_optimized}.so
-%{pylibdir}/turtle.py
-%{pylibdir}/__pycache__/turtle*%{bytecode_suffixes}
-%dir %{pylibdir}/turtledemo
-%{pylibdir}/turtledemo/*.py
-%{pylibdir}/turtledemo/*.cfg
-%dir %{pylibdir}/turtledemo/__pycache__/
-%{pylibdir}/turtledemo/__pycache__/*%{bytecode_suffixes}
-
-
-%{pylibdir}/ctypes/test
-%{pylibdir}/distutils/tests
-%{pylibdir}/sqlite3/test
-%{pylibdir}/test
-%{dynload_dir}/_ctypes_test.%{SOABI_optimized}.so
-%{dynload_dir}/_testbuffer.%{SOABI_optimized}.so
-%{dynload_dir}/_testcapi.%{SOABI_optimized}.so
-%{dynload_dir}/_testimportmultiple.%{SOABI_optimized}.so
-%{dynload_dir}/_testinternalcapi.%{SOABI_optimized}.so
-%{dynload_dir}/_testmultiphase.%{SOABI_optimized}.so
-%{dynload_dir}/_xxtestfuzz.%{SOABI_optimized}.so
-%{pylibdir}/lib2to3/tests
-%{pylibdir}/tkinter/test
-%{pylibdir}/unittest/test
 
 # Workaround for https://bugzilla.redhat.com/show_bug.cgi?id=1476593
 %undefine _debuginfo_subpackages
@@ -1048,5 +769,5 @@ CheckPython() {
 # ======================================================
 
 %changelog
-* Thu May 05 2022 Antonio Ettorre <antonio@openquake.org> - 3.9.12-1
-- First build of oq-python39 (migrated from oq-python38)
+* Fri May 1 2020 Daniele Viganò <daniele@vigano.me> - 3.8.2-1
+- First build of oq-python38 (migrated from oq-python37)
