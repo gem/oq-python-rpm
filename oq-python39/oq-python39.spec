@@ -456,11 +456,6 @@ BuildPython() {
 
 %global flags_override EXTRA_CFLAGS="$MoreCFlags" CFLAGS_NODIST="$CFLAGS_NODIST $MoreCFlags"
 
-%if %{without bootstrap}
-  # Regenerate generated files (needs python3)
-  %make_build %{flags_override} regen-all PYTHON_FOR_REGEN="python%{pybasever}"
-%endif
-
   # Invoke the build
   %make_build %{flags_override}
 
