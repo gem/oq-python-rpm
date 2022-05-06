@@ -18,7 +18,7 @@ URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
-%global general_version %{pybasever}.6
+%global general_version %{pybasever}.12
 #global prerel ...
 %global upstream_version %{general_version}%{?prerel}
 Version: %{general_version}%{?prerel:~%{prerel}}
@@ -26,17 +26,26 @@ Release: 1%{?dist}
 License: Python
 
 
-# Exclude i686 arch. Due to a modularity issue it's being added to the
-# x86_64 compose of CRB, but we don't want to ship it at all.
-# See: https://projects.engineering.redhat.com/browse/RCM-72605
-ExcludeArch: i686
-
 # ==================================
 # Conditionals controlling the build
 # ==================================
 
 # Note that the bcond macros are named for the CLI option they create.
 # "%%bcond_without" means "ENABLE by default and create a --without option"
+
+# When bootstrapping python3, we need to build setuptools.
+# but setuptools BR python3-devel and that brings in python3-rpm-generators;
+# python3-rpm-generators needs python3-setuptools, so we cannot have it yet.
+#
+# We also use the previous build of Python in "make regen-all"
+# and in "distutils.tests.test_bdist_rpm".
+#
+# Procedure: https://fedoraproject.org/wiki/SIGs/Python/UpgradingPython
+#
+#   IMPORTANT: When bootstrapping, it's very likely the wheels for pip and
+#   setuptools are not available. Turn off the rpmwheels bcond until
+#   the two packages are built with wheels to get around the issue.
+%bcond_with bootstrap
 
 # Expensive optimizations (mainly, profile-guided optimizations)
 %bcond_without optimizations
@@ -50,7 +59,6 @@ ExcludeArch: i686
 # Main interpreter loop optimization
 %bcond_without computed_gotos
 
-
 # https://fedoraproject.org/wiki/Changes/Python_Upstream_Architecture_Names
 # For a very long time we have converted "upstream architecture names" to "Fedora names".
 # This made sense at the time, see https://github.com/pypa/manylinux/issues/687#issuecomment-666362947
@@ -59,12 +67,31 @@ ExcludeArch: i686
 # We now have a compatibility layer to workaround a problem,
 # but we also no longer use the legacy arch names in Fedora 34+.
 # This bcond controls the behavior. The defaults should be good for anybody.
-# RHEL: Disabled by default
+%if 0%{?fedora} >= 34 || 0%{?rhel} >= 9
 %bcond_with legacy_archnames
+%else
+%bcond_without legacy_archnames
+%endif
+
+# In RHEL 9+, we obsolete/provide Platform Python from regular Python
+# This is only appropriate for the main Python build
+%if 0%{?rhel} >= 9 && %{with main_python}
+%bcond_without rhel8_compat_shims
+%else
+%bcond_with rhel8_compat_shims
+%endif
+
 
 # =====================
 # General global macros
 # =====================
+
+# Make sure that the proper installation of python is used by macros
+%define __python3 %{_bindir}/python%{pybasever}
+%define __python %{__python3}
+
+%global pkgname python%{pybasever}
+%global exename python%{pybasever}
 
 %global pylibdir %{_libdir}/python%{pybasever}
 %global dynload_dir %{pylibdir}/lib-dynload
@@ -75,8 +102,18 @@ ExcludeArch: i686
 
 %global LDVERSION_optimized %{pybasever}%{ABIFLAGS_optimized}
 
+# When we use the upstream arch triplets, we convert them from the legacy ones
+# This is reversed in prep when %%with legacy_archnames, so we keep both macros
 %global platform_triplet_legacy %{_arch}-linux%{_gnu}
+%global platform_triplet_upstream %{expand:%(echo %{platform_triplet_legacy} | sed -E \\
+    -e 's/^arm(eb)?-linux-gnueabi$/arm\\1-linux-gnueabihf/' \\
+    -e 's/^mips64(el)?-linux-gnu$/mips64\\1-linux-gnuabi64/' \\
+    -e 's/^ppc(64)?(le)?-linux-gnu$/powerpc\\1\\2-linux-gnu/')}
+%if %{with legacy_archnames}
 %global platform_triplet %{platform_triplet_legacy}
+%else
+%global platform_triplet %{platform_triplet_upstream}
+%endif
 
 %global SOABI_optimized cpython-%{pyshortver}%{ABIFLAGS_optimized}-%{platform_triplet}
 
@@ -109,70 +146,17 @@ ExcludeArch: i686
 %global py_SOVERSION 1.0
 %global py_INSTSONAME_optimized libpython%{LDVERSION_optimized}.so.%{py_SOVERSION}
 
-# Make sure that the proper installation of python is used by macros
-%define __python3 %{_bindir}/python%{pybasever}
-%define __python %{__python3}
 
 # Disable automatic bytecompilation. The python3 binary is not yet be
 # available in /usr/bin when Python is built. Also, the bytecompilation fails
 # on files that test invalid syntax.
 %undefine py_auto_byte_compile
 
-# RHEL: An example egg file is included among the python39-test files and due
-# to a bug in python3-rpm-generator, mistaken Provides are generated. So we
-# exclude them until the issue is properly addressed.
-# See BZ: https://bugzilla.redhat.com/show_bug.cgi?id=1916172
-%global __provides_exclude_from ^%{pylibdir}/test/test_importlib/data/example-.*\.egg$
-
-# For multilib support, files that are different between 32- and 64-bit arches
-# need different filenames. Use "64" or "32" according to the word size.
-# Currently, the best way to determine an architecture's word size happens to
-# be checking %%{_lib}.
-%global wordsize 64
-
-
 # =======================
 # Build-time requirements
 # =======================
 
 # (keep this list alphabetized)
-
-BuildRequires: autoconf
-BuildRequires: bluez-libs-devel
-BuildRequires: bzip2
-BuildRequires: bzip2-devel
-BuildRequires: expat-devel
-
-BuildRequires: findutils
-BuildRequires: gcc-c++
-BuildRequires: glibc-devel
-BuildRequires: gmp-devel
-BuildRequires: libappstream-glib
-BuildRequires: libffi-devel
-%if 0%{?fedora} >= 27
-BuildRequires: libnsl2-devel
-%endif
-BuildRequires: libtirpc-devel
-BuildRequires: libGL-devel
-BuildRequires: libX11-devel
-BuildRequires: ncurses-devel
-
-BuildRequires: openssl-devel
-BuildRequires: pkgconfig
-BuildRequires: readline-devel
-BuildRequires: sqlite-devel
-
-BuildRequires: tar
-BuildRequires: tcl-devel
-BuildRequires: tix-devel
-BuildRequires: tk-devel
-
-BuildRequires: xz-devel
-BuildRequires: zlib-devel
-
-BuildRequires: /usr/bin/dtrace
-
-
 BuildRequires: autoconf
 BuildRequires: bluez-libs-devel
 BuildRequires: bzip2
@@ -182,9 +166,6 @@ BuildRequires: expat-devel
 
 BuildRequires: findutils
 BuildRequires: gcc-c++
-%if %{with gdbm}
-BuildRequires: gdbm-devel
-%endif
 BuildRequires: git-core
 BuildRequires: glibc-all-langpacks
 BuildRequires: glibc-devel
@@ -203,7 +184,7 @@ BuildRequires: ncurses-devel
 BuildRequires: openssl-devel
 BuildRequires: pkgconfig
 BuildRequires: readline-devel
-BuildRequires: redhat-rpm-config
+BuildRequires: redhat-rpm-config >= 127
 BuildRequires: sqlite-devel
 BuildRequires: gdb
 
@@ -213,24 +194,21 @@ BuildRequires: tix-devel
 BuildRequires: tk-devel
 BuildRequires: tzdata
 
-%if %{with valgrind}
-BuildRequires: valgrind-devel
-%endif
-
 BuildRequires: xz-devel
 BuildRequires: zlib-devel
 
 BuildRequires: /usr/bin/dtrace
 
-# Generators run on Python 3.6 so we can take this dependency out of the bootstrap loop
-BuildRequires: python3-rpm-generators
-
 # workaround http://bugs.python.org/issue19804 (test_uuid requires ifconfig)
-%if 0%{?fedora} || 0%{?el8}
 BuildRequires: /usr/sbin/ifconfig
-%else
-BuildRequires: /sbin/ifconfig
+
+%if %{without bootstrap}
+# for make regen-all and distutils.tests.test_bdist_rpm
+BuildRequires: python%{pybasever}
+# for proper automatic provides
+BuildRequires: python3-rpm-generators
 %endif
+
 # =======================
 # Source code and patches
 # =======================
@@ -783,5 +761,5 @@ end
 # ======================================================
 
 %changelog
-* Thu May 05 2022 Antonio Ettorre <antonio@openquake.org> - 3.9.6-2
+* Thu May 05 2022 Antonio Ettorre <antonio@openquake.org> - 3.9.12-1
 - First build of oq-python39 (migrated from oq-python38)
