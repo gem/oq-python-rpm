@@ -33,6 +33,6 @@ Provides Python 3.8 in `/opt/openquake`
 
 ## Python 3.9
 
-Based on https://src.fedoraproject.org/rpms/python3.9/c/fefc6815e502651c34d71ba02b0b67fade07e601?branch=rawhide
+Based on https://src.fedoraproject.org/rpms/python3.9/c/fefc6815e502651c34d71ba02b0b67fade07e601?branch=master
 
 Provides Python 3.9 in `/opt/openquake`
