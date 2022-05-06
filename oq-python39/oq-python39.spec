@@ -7,10 +7,10 @@
 # Top-level metadata
 # ==================
 
-%global pybasever 3.8
+%global pybasever 3.9
 
 # pybasever without the dot:
-%global pyshortver 38
+%global pyshortver 39
 
 Name: oq-python%{pyshortver}
 Summary: Version %{pybasever} of the Python interpreter for OpenQuake
@@ -18,10 +18,18 @@ URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
-Version: %{pybasever}.2
+%global general_version %{pybasever}.6
+#global prerel ...
+%global upstream_version %{general_version}%{?prerel}
+Version: %{general_version}%{?prerel:~%{prerel}}
 Release: 1%{?dist}
 License: Python
 
+
+# Exclude i686 arch. Due to a modularity issue it's being added to the
+# x86_64 compose of CRB, but we don't want to ship it at all.
+# See: https://projects.engineering.redhat.com/browse/RCM-72605
+ExcludeArch: i686
 
 # ==================================
 # Conditionals controlling the build
@@ -31,22 +39,33 @@ License: Python
 # "%%bcond_without" means "ENABLE by default and create a --without option"
 
 # Expensive optimizations (mainly, profile-guided optimizations)
-%ifarch %{ix86} x86_64
 %bcond_without optimizations
-%else
-# On some architectures, the optimized build takes tens of hours, possibly
-# longer than Koji's 24-hour timeout. Disable optimizations here.
-%bcond_with optimizations
-%endif
+
+# https://fedoraproject.org/wiki/Changes/PythonNoSemanticInterpositionSpeedup
+%bcond_without no_semantic_interposition
 
 # Run the test suite in %%check
-%bcond_with tests
+%bcond_without tests
 
 # Main interpreter loop optimization
 %bcond_without computed_gotos
 
 
+# https://fedoraproject.org/wiki/Changes/Python_Upstream_Architecture_Names
+# For a very long time we have converted "upstream architecture names" to "Fedora names".
+# This made sense at the time, see https://github.com/pypa/manylinux/issues/687#issuecomment-666362947
+# However, with manylinux wheels popularity growth, this is now a problem.
+# Wheels built on a Linux that doesn't do this were not compatible with ours and vice versa.
+# We now have a compatibility layer to workaround a problem,
+# but we also no longer use the legacy arch names in Fedora 34+.
+# This bcond controls the behavior. The defaults should be good for anybody.
+# RHEL: Disabled by default
+%bcond_with legacy_archnames
 
+# In RHEL 9+, we obsolete/provide Platform Python from regular Python
+# This is only appropriate for the main Python build
+# RHEL: Disabled for python39 module
+%bcond_with rhel8_compat_shims
 # =====================
 # General global macros
 # =====================
@@ -60,7 +79,11 @@ License: Python
 
 %global LDVERSION_optimized %{pybasever}%{ABIFLAGS_optimized}
 
-%global SOABI_optimized cpython-%{pyshortver}%{ABIFLAGS_optimized}-%{_arch}-linux%{_gnu}
+%global platform_triplet_legacy %{_arch}-linux%{_gnu}
+%global platform_triplet %{platform_triplet_legacy}
+
+%global SOABI_optimized cpython-%{pyshortver}%{ABIFLAGS_optimized}-%{platform_triplet}
+
 
 # All bytecode files are in a __pycache__ subdirectory, with a name
 # reflecting the version of the bytecode.
@@ -73,6 +96,13 @@ License: Python
 #   foo/__pycache__/bar.cpython-%%{pyshortver}.opt-2.pyc
 %global bytecode_suffixes .cpython-%{pyshortver}*.pyc
 
+# libmpdec (mpdecimal package in Fedora) is tightly coupled with the
+# decimal module. We keep it bundled as to avoid incompatibilities
+# with the packaged version.
+# The version information can be found at Modules/_decimal/libmpdec/mpdecimal.h
+# defined as MPD_VERSION.
+%global libmpdec_version 2.5.0
+
 # Python's configure script defines SOVERSION, and this is used in the Makefile
 # to determine INSTSONAME, the name of the libpython DSO:
 #   LDLIBRARY='libpython$(VERSION).so'
@@ -84,7 +114,7 @@ License: Python
 %global py_INSTSONAME_optimized libpython%{LDVERSION_optimized}.so.%{py_SOVERSION}
 
 # Make sure that the proper installation of python is used by macros
-%define __python3 %{_bindir}/python3.8
+%define __python3 %{_bindir}/python%{pybasever}
 %define __python %{__python3}
 
 # Disable automatic bytecompilation. The python3 binary is not yet be
@@ -92,37 +122,17 @@ License: Python
 # on files that test invalid syntax.
 %undefine py_auto_byte_compile
 
-# Backported from EPEL:
-#  https://src.fedoraproject.org/cgit/rpms/python36.git/tree/?h=epel7&id=ee1b6fe2f274b9a4b526263f42d208bbfbe08a2f
-# We want to byte-compile the .py files within the packages using the new
-# python3 binary.
-#
-# Unfortunately, rpmbuild's infrastructure requires us to jump through some
-# hoops to avoid byte-compiling with the system python version:
-#   /usr/lib/rpm/redhat/macros sets up build policy that (amongst other things)
-# defines __os_install_post.  In particular, "brp-python-bytecompile" is
-# invoked without an argument thus using the wrong version of python3
-# (/usr/bin/python3.6, rather than the freshly built python3), thus leading to
-# numerous syntax errors, and incorrect magic numbers in the .pyc files.  We
-# thus override __os_install_post to avoid invoking this script:
-%global __os_install_post /usr/lib/rpm/brp-compress \
-  %{!?__debug_package:/usr/lib/rpm/brp-strip %{__strip}} \
-  /usr/lib/rpm/brp-strip-static-archive %{__strip} \
-  /usr/lib/rpm/brp-strip-comment-note %{__strip} %{__objdump} \
-  /usr/lib/rpm/brp-python-hardlink
-# to remove the invocation of brp-python-bytecompile, whilst keeping the
-# invocation of brp-python-hardlink (since this should still work for python3
-# pyc files)
+# RHEL: An example egg file is included among the python39-test files and due
+# to a bug in python3-rpm-generator, mistaken Provides are generated. So we
+# exclude them until the issue is properly addressed.
+# See BZ: https://bugzilla.redhat.com/show_bug.cgi?id=1916172
+%global __provides_exclude_from ^%{pylibdir}/test/test_importlib/data/example-.*\.egg$
 
 # For multilib support, files that are different between 32- and 64-bit arches
 # need different filenames. Use "64" or "32" according to the word size.
 # Currently, the best way to determine an architecture's word size happens to
 # be checking %%{_lib}.
-%if "%{_lib}" == "lib64"
 %global wordsize 64
-%else
-%global wordsize 32
-%endif
 
 
 # =======================
@@ -166,14 +176,65 @@ BuildRequires: zlib-devel
 
 BuildRequires: /usr/bin/dtrace
 
+
+BuildRequires: autoconf
+BuildRequires: bluez-libs-devel
+BuildRequires: bzip2
+BuildRequires: bzip2-devel
+BuildRequires: desktop-file-utils
+BuildRequires: expat-devel
+
+BuildRequires: findutils
+BuildRequires: gcc-c++
+%if %{with gdbm}
+BuildRequires: gdbm-devel
+%endif
+BuildRequires: git-core
+BuildRequires: glibc-all-langpacks
+BuildRequires: glibc-devel
+BuildRequires: gmp-devel
+BuildRequires: gnupg2
+BuildRequires: libappstream-glib
+BuildRequires: libffi-devel
+BuildRequires: libnsl2-devel
+BuildRequires: libtirpc-devel
+BuildRequires: libGL-devel
+BuildRequires: libuuid-devel
+BuildRequires: libX11-devel
+BuildRequires: make
+BuildRequires: ncurses-devel
+
+BuildRequires: openssl-devel
+BuildRequires: pkgconfig
+BuildRequires: readline-devel
+BuildRequires: redhat-rpm-config
+BuildRequires: sqlite-devel
+BuildRequires: gdb
+
+BuildRequires: tar
+BuildRequires: tcl-devel
+BuildRequires: tix-devel
+BuildRequires: tk-devel
+BuildRequires: tzdata
+
+%if %{with valgrind}
+BuildRequires: valgrind-devel
+%endif
+
+BuildRequires: xz-devel
+BuildRequires: zlib-devel
+
+BuildRequires: /usr/bin/dtrace
+
+# Generators run on Python 3.6 so we can take this dependency out of the bootstrap loop
+BuildRequires: python3-rpm-generators
+
 # workaround http://bugs.python.org/issue19804 (test_uuid requires ifconfig)
 %if 0%{?fedora} || 0%{?el8}
 BuildRequires: /usr/sbin/ifconfig
 %else
 BuildRequires: /sbin/ifconfig
 %endif
-
-
 # =======================
 # Source code and patches
 # =======================
