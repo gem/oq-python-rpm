@@ -363,13 +363,6 @@ rm -r Modules/expat
 # (This is after patching, so that we can use patches directly from upstream)
 rm configure pyconfig.h.in
 
-# When we use the legacy arch names, we need to change them in configure.ac
-%if %{with legacy_archnames}
-sed -i configure.ac \
-    -e 's/\b%{platform_triplet_upstream}\b/%{platform_triplet_legacy}/'
-%endif
-
-
 # ======================================================
 # Configuring and building the code:
 # ======================================================
@@ -473,6 +466,7 @@ BuildPython() {
 
   popd
   echo FINISHED: BUILD OF PYTHON FOR CONFIGURATION: $ConfName
+}
 # Call the above to build each configuration.
 
 BuildPython optimized \
