@@ -704,6 +704,10 @@ end
 %dir %{_prefix}
 %dir %{_bindir}
 %dir %{_libdir}
+%{_libdir}/libpython%{pybasever}.so
+%{_libdir}/libpython%{pybasever}.so.1.0
+%{_libdir}/libpython%{LDVERSION}.so
+%{_libdir}/libpython%{LDVERSION}.so.%{py_SOVERSION}
 %if "%{_lib}" == "lib64"
 %dir %{_prefix}/lib
 %endif
