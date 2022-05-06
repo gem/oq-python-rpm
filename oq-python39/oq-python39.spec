@@ -62,10 +62,6 @@ ExcludeArch: i686
 # RHEL: Disabled by default
 %bcond_with legacy_archnames
 
-# In RHEL 9+, we obsolete/provide Platform Python from regular Python
-# This is only appropriate for the main Python build
-# RHEL: Disabled for python39 module
-%bcond_with rhel8_compat_shims
 # =====================
 # General global macros
 # =====================
@@ -378,7 +374,9 @@ Patch353: 00353-architecture-names-upstream-downstream.patch
 %global __provides_exclude ^python\\(abi\\) = 3\\..$
 
 Provides: oq-python3
-Obsoletes: oq-python35 oq-python36 oq-python37
+Provides: oq-python%{pyshortver}
+Provides: oq-python%{pybasever} = %{version}-%{release}
+Obsoletes: oq-python35 oq-python36 oq-python37 oq-python38
 
 %description
 Python %{pybasever} package for OpenQuake
@@ -780,4 +778,4 @@ end
 
 %changelog
 * Thu May 05 2022 Antonio Ettorre <antonio@openquake.org> - 3.9.6-2
-- First build of oq-python38 (migrated from oq-python38)
+- First build of oq-python39 (migrated from oq-python38)
