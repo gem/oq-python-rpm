@@ -835,12 +835,8 @@ CheckPython() {
 %{dynload_dir}/_ctypes.%{SOABI_optimized}.so
 %{dynload_dir}/_curses.%{SOABI_optimized}.so
 %{dynload_dir}/_curses_panel.%{SOABI_optimized}.so
-%{dynload_dir}/_dbm.%{SOABI_optimized}.so
 %{dynload_dir}/_decimal.%{SOABI_optimized}.so
 %{dynload_dir}/_elementtree.%{SOABI_optimized}.so
-%if %{with gdbm}
-%{dynload_dir}/_gdbm.%{SOABI_optimized}.so
-%endif
 %{dynload_dir}/_hashlib.%{SOABI_optimized}.so
 %{dynload_dir}/_heapq.%{SOABI_optimized}.so
 %{dynload_dir}/_json.%{SOABI_optimized}.so
@@ -904,11 +900,6 @@ CheckPython() {
 %{pylibdir}/ctypes/macholib
 
 %{pylibdir}/curses
-
-%dir %{pylibdir}/dbm/
-%dir %{pylibdir}/dbm/__pycache__/
-%{pylibdir}/dbm/*.py
-%{pylibdir}/dbm/__pycache__/*%{bytecode_suffixes}
 
 %dir %{pylibdir}/distutils/
 %dir %{pylibdir}/distutils/__pycache__/
