@@ -593,7 +593,6 @@ find . -name "*~" -exec rm -f {} \;
 
 # Get rid of a stray copy of the license:
 rm %{buildroot}%{pylibdir}/LICENSE.txt
-
 # Do bytecompilation with the newly installed interpreter.
 # This is similar to the script in macros.pybytecompile
 # compile *.pyc
