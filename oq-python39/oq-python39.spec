@@ -997,10 +997,6 @@ CheckPython() {
 %endif
 
 
-%if %{without flatpackage}
-%files -n %{pkgname}-devel
-%endif
-
 %if %{with main_python}
 %{_bindir}/2to3
 %endif
@@ -1049,11 +1045,6 @@ CheckPython() {
 %{_libexecdir}/platform-python%{LDVERSION_optimized}-*-config
 %endif
 
-
-%if %{without flatpackage}
-%files -n %{pkgname}-idle
-%endif
-
 %if %{with main_python}
 %{_bindir}/idle*
 %else
@@ -1066,10 +1057,6 @@ CheckPython() {
 %{_metainfodir}/idle3.appdata.xml
 %{_datadir}/applications/idle3.desktop
 %{_datadir}/icons/hicolor/*/apps/idle3.*
-%endif
-
-%if %{without flatpackage}
-%files -n %{pkgname}-tkinter
 %endif
 
 %{pylibdir}/tkinter
@@ -1085,10 +1072,6 @@ CheckPython() {
 %dir %{pylibdir}/turtledemo/__pycache__/
 %{pylibdir}/turtledemo/__pycache__/*%{bytecode_suffixes}
 
-
-%if %{without flatpackage}
-%files -n %{pkgname}-test
-%endif
 
 %{pylibdir}/ctypes/test
 %{pylibdir}/distutils/tests
