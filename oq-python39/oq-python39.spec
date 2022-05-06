@@ -212,11 +212,9 @@ BuildRequires: python3-rpm-generators
 # =======================
 # Source code and patches
 # =======================
-
 Source0: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz
 Source1: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz.asc
 Source2: %{url}static/files/pubkeys.txt
-Source3: macros.python39
 
 # A simple script to check timestamps of bytecode files
 # Run in check section with Python that is currently being built
@@ -244,7 +242,7 @@ Patch1: 00001-rpath.patch
 # See https://bugzilla.redhat.com/show_bug.cgi?id=556092
 Patch111: 00111-no-static-lib.patch
 
-# 00189 # 4242864a6a12f1f4cf9fd63a6699a73f35261aa3
+# 00189 # a79a85be3f0ad45792d998aed1104c2c2a0ef729
 # Instead of bundled wheels, use our RPM packaged wheels
 #
 # We keep them in /usr/share/python-wheels
@@ -256,10 +254,10 @@ Patch189: 00189-use-rpm-wheels.patch
 # The versions are written in Lib/ensurepip/__init__.py, this patch removes them.
 # When the bundled setuptools/pip wheel is updated, the patch no longer applies cleanly.
 # In such cases, the patch needs to be amended and the versions updated here:
-%global pip_version 21.1.3
-%global setuptools_version 56.0.0
+%global pip_version 22.0.4
+%global setuptools_version 58.1.0
 
-# 00251 # 2eabd04356402d488060bc8fe316ad13fc8a3356
+# 00251 # 1b1047c14ff98eae6d355b4aac4df3e388813f62
 # Change user install location
 #
 # Set values of prefix and exec_prefix in distutils install command
@@ -267,7 +265,13 @@ Patch189: 00189-use-rpm-wheels.patch
 # is not detected to make pip and distutils install into separate location.
 #
 # Fedora Change: https://fedoraproject.org/wiki/Changes/Making_sudo_pip_safe
-# Downstream only: Awaiting resources to work on upstream PEP
+# Downstream only: Reworked in Fedora 36+/Python 3.10+ to follow https://bugs.python.org/issue43976
+#
+# pypa/distutils integration: https://github.com/pypa/distutils/pull/70
+#
+# Also set sysconfig._PIP_USE_SYSCONFIG = False, to force pip-upgraded-pip
+# to respect this patched distutils install command.
+# See https://bugzilla.redhat.com/show_bug.cgi?id=2014513
 Patch251: 00251-change-user-install-location.patch
 
 # 00328 # 367fdcb5a075f083aea83ac174999272a8faf75c
@@ -283,24 +287,6 @@ Patch251: 00251-change-user-install-location.patch
 # Downstream only: only used when building RPM packages
 # Ideally, we should talk to upstream and explain why we don't want this
 Patch328: 00328-pyc-timestamp-invalidation-mode.patch
-
-# 00329 #
-# Support OpenSSL FIPS mode
-# - In FIPS mode, OpenSSL wrappers are always used in hashlib
-# - The "usedforsecurity" keyword argument can be used to the various digest
-#   algorithms in hashlib so that you can whitelist a callsite with
-#   "usedforsecurity=False"
-# - OpenSSL wrappers for the hashes blake2{b512,s256},
-# - In FIPS mode, the blake2 hashes use OpenSSL wrappers
-#   and do not offer extended functionality (keys, tree hashing, custom digest size)
-# - In FIPS mode, hmac.HMAC can only be instantiated with an OpenSSL wrapper
-#   or an string with OpenSSL hash name as the "digestmod" argument.
-#   The argument must be specified (instead of defaulting to ‘md5’).
-#
-# - Also while in FIPS mode, we utilize OpenSSL's DRBG and disable the
-#   os.getrandom() function.
-#
-Patch329: 00329-fips.patch
 
 # 00353 # ab4cc97b643cfe99f567e3a03e5617b507183771
 # Original names for architectures with different names downstream
@@ -327,6 +313,17 @@ Patch329: 00329-fips.patch
 # a nightmare because it's basically a binary file.
 Patch353: 00353-architecture-names-upstream-downstream.patch
 
+# 00371 # 1fc313929648e9b543542de09f59c55e175ac45a
+# Revert "bpo-1596321: Fix threading._shutdown() for the main thread (GH-28549) (GH-28589)"
+#
+# This reverts commit 94d19f606fa18a1c4d2faca1caf2f470a8ce6d46. It
+# introduced regression causing FreeIPA's tests to fail.
+#
+# For more info see:
+# https://bodhi.fedoraproject.org/updates/FEDORA-2021-e152ce5f31
+# https://github.com/GrahamDumpleton/mod_wsgi/issues/730
+Patch371: 00371-revert-bpo-1596321-fix-threading-_shutdown-for-the-main-thread-gh-28549-gh-28589.patch
+
 # (New patches go here ^^^)
 #
 # When adding new patches to "python" and "python3" in Fedora, EL, etc.,
@@ -339,8 +336,6 @@ Patch353: 00353-architecture-names-upstream-downstream.patch
 # The patches are stored and rebased at:
 #
 #     https://github.com/fedora-python/cpython
-
-
 
 # ==========================================
 # Descriptions, and metadata for subpackages
