@@ -518,12 +518,6 @@ InstallPython() {
 
   popd
 
-%if %{with gdb_hooks}
-  # See comment on $DirHoldingGdbPy above
-  PathOfGdbPy=$DirHoldingGdbPy/$PyInstSoName-%{version}-%{release}.%{_arch}.debug-gdb.py
-  cp Tools/gdb/libpython.py %{buildroot}$PathOfGdbPy
-%endif # with gdb_hooks
-
   # Rename the -devel script that differs on different arches to arch specific name
   mv %{buildroot}%{_bindir}/python${LDVersion}-{,`uname -m`-}config
   echo -e '#!/bin/sh\nexec %{_bindir}/python'${LDVersion}'-`uname -m`-config "$@"' > \
