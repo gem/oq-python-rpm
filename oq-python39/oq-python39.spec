@@ -515,11 +515,7 @@ InstallPython() {
   mkdir -p $ConfDir
   pushd $ConfDir
 
-  make \
-    DESTDIR=%{buildroot} \
-    INSTALL="install -p" \
-    EXTRA_CFLAGS="$MoreCFlags" \
-    install
+  %make_install EXTRA_CFLAGS="$MoreCFlags"
 
   popd
 
@@ -580,7 +576,15 @@ sed -i -e "s/'pyconfig.h'/'%{_pyconfig_h}'/" \
 
 # Install pathfix.py to bindir
 # See https://github.com/fedora-python/python-rpm-porting/issues/24
-# cp -p Tools/scripts/pathfix.py %{buildroot}%{_bindir}/
+cp -p Tools/scripts/pathfix.py %{buildroot}%{_bindir}/pathfix%{pybasever}.py
+
+# Install i18n tools to bindir
+# They are also in python2, so we version them
+# https://bugzilla.redhat.com/show_bug.cgi?id=1571474
+for tool in pygettext msgfmt; do
+  cp -p Tools/i18n/${tool}.py %{buildroot}%{_bindir}/${tool}%{pybasever}.py
+  ln -s ${tool}%{pybasever}.py %{buildroot}%{_bindir}/${tool}3.py
+done
 
 # Switch all shebangs to refer to the specific Python version.
 # This currently only covers files matching ^[a-zA-Z0-9_]+\.py$,
@@ -588,11 +592,9 @@ sed -i -e "s/'pyconfig.h'/'%{_pyconfig_h}'/" \
 LD_LIBRARY_PATH=./build/optimized ./build/optimized/python \
   Tools/scripts/pathfix.py \
   -i "%{_bindir}/python%{pybasever}" -pn \
-  %{buildroot}
-
-# Remove tests for python3-tools which was removed in
-# https://bugzilla.redhat.com/show_bug.cgi?id=1312030
-rm -rf %{buildroot}%{pylibdir}/test/test_tools
+  %{buildroot} \
+  %{buildroot}%{_bindir}/*%{pybasever}.py \
+  %{?with_gdb_hooks:%{buildroot}$DirHoldingGdbPy/*.py}
 
 # Remove shebang lines from .py files that aren't executable, and
 # remove executability from .py files that don't have a shebang line:
@@ -609,16 +611,24 @@ find %{buildroot} -name \*.bat -exec rm {} \;
 find %{buildroot}/ -name "*~" -exec rm -f {} \;
 find . -name "*~" -exec rm -f {} \;
 
-# Get rid of a stray copy of the license:
-rm %{buildroot}%{pylibdir}/LICENSE.txt
-
 # Do bytecompilation with the newly installed interpreter.
 # This is similar to the script in macros.pybytecompile
 # compile *.pyc
-find %{buildroot} -type f -a -name "*.py" -print0 | \
-    LD_LIBRARY_PATH="%{buildroot}%{dynload_dir}/:%{buildroot}%{_libdir}" \
-    PYTHONPATH="%{buildroot}%{_libdir}/python%{pybasever} %{buildroot}%{_libdir}/python%{pybasever}/site-packages" \
-    xargs -0 %{buildroot}%{_bindir}/python%{pybasever} -O -c 'import py_compile, sys; [py_compile.compile(f, dfile=f.partition("%{buildroot}")[2], optimize=opt) for opt in range(3) for f in sys.argv[1:]]' || :
+# Python CMD line options:
+# -s - don't add user site directory to sys.path
+# -B - don't write .pyc files on import
+# compileall CMD line options:
+# -f - force rebuild even if timestamps are up to date
+# -o - optimization levels to run compilation with
+# -s - part of path to left-strip from path to source file (buildroot)
+# -p - path to add as prefix to path to source file (/ to make it absolute)
+# --hardlink-dupes - hardlink different optimization level pycs together if identical (saves space)
+LD_LIBRARY_PATH="%{buildroot}%{dynload_dir}/:%{buildroot}%{_libdir}" \
+%{buildroot}%{_bindir}/python%{pybasever} -s -B -m compileall \
+-f %{_smp_mflags} -o 0 -o 1 -o 2 -s %{buildroot} -p / %{buildroot} --hardlink-dupes || :
+
+# Turn this BRP off, it is done by compileall2 --hardlink-dupes above
+%global __brp_python_hardlink %{nil}
 
 # Since we have pathfix.py in bindir, this is created, but we don't want it
 rm -rf %{buildroot}%{_bindir}/__pycache__
@@ -626,6 +636,47 @@ rm -rf %{buildroot}%{_bindir}/__pycache__
 # Fixup permissions for shared libraries from non-standard 555 to standard 755:
 find %{buildroot} -perm 555 -exec chmod 755 {} \;
 
+# There's 2to3-X.X executable and 2to3 soft link to it.
+# No reason to have both, so keep only 2to3 as an executable.
+# See https://bugzilla.redhat.com/show_bug.cgi?id=1111275
+mv %{buildroot}%{_bindir}/2to3-%{pybasever} %{buildroot}%{_bindir}/2to3
+
+%if %{without main_python}
+# Remove stuff that would conflict with python3 package
+rm %{buildroot}%{_bindir}/python3
+rm %{buildroot}%{_bindir}/pydoc3
+rm %{buildroot}%{_bindir}/pygettext3.py
+rm %{buildroot}%{_bindir}/msgfmt3.py
+rm %{buildroot}%{_bindir}/idle3
+rm %{buildroot}%{_bindir}/python3-*
+rm %{buildroot}%{_bindir}/2to3
+rm %{buildroot}%{_libdir}/libpython3.so
+rm %{buildroot}%{_mandir}/man1/python3.1*
+rm %{buildroot}%{_libdir}/pkgconfig/python3.pc
+rm %{buildroot}%{_libdir}/pkgconfig/python3-embed.pc
+%else
+# Link the unversioned stuff
+# https://fedoraproject.org/wiki/Changes/Python_means_Python3
+ln -s ./python3 %{buildroot}%{_bindir}/python
+ln -s ./pydoc3 %{buildroot}%{_bindir}/pydoc
+ln -s ./pygettext3.py %{buildroot}%{_bindir}/pygettext.py
+ln -s ./msgfmt3.py %{buildroot}%{_bindir}/msgfmt.py
+ln -s ./idle3 %{buildroot}%{_bindir}/idle
+ln -s ./python3-config %{buildroot}%{_bindir}/python-config
+ln -s ./python3.1 %{buildroot}%{_mandir}/man1/python.1
+ln -s ./python3.pc %{buildroot}%{_libdir}/pkgconfig/python.pc
+ln -s ./pathfix%{pybasever}.py %{buildroot}%{_bindir}/pathfix.py
+%if %{with debug_build}
+ln -s ./python3-debug %{buildroot}%{_bindir}/python-debug
+%endif
+
+# Remove large, autogenerated sources and keep only the non-optimized pycache
+for file in %{buildroot}%{pylibdir}/pydoc_data/topics.py $(grep --include='*.py' -lr %{buildroot}%{pylibdir}/encodings -e 'Python Character Mapping Codec .* from .* with gencodec.py'); do
+    directory=$(dirname ${file})
+    module=$(basename ${file%%.py})
+    mv ${directory}/{__pycache__/${module}.cpython-%{pyshortver}.pyc,${module}.pyc}
+    rm ${directory}/{__pycache__/${module}.cpython-%{pyshortver}.opt-?.pyc,${module}.py}
+done
 # ======================================================
 # Checks for packaging issues
 # ======================================================
