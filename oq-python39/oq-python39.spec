@@ -184,7 +184,7 @@ BuildRequires: ncurses-devel
 BuildRequires: openssl-devel
 BuildRequires: pkgconfig
 BuildRequires: readline-devel
-BuildRequires: redhat-rpm-config >= 127
+BuildRequires: redhat-rpm-config
 BuildRequires: sqlite-devel
 BuildRequires: gdb
 
@@ -684,6 +684,11 @@ done
 
 %check
 
+# setuptools 60+ uses its own copy of distutils by default
+# this setting must be overriden with the environment variable for
+# Python tests to use the standard library's distutils
+export SETUPTOOLS_USE_DISTUTILS=stdlib
+
 # first of all, check timestamps of bytecode files
 find %{buildroot} -type f -a -name "*.py" -print0 | \
     LD_LIBRARY_PATH="%{buildroot}%{dynload_dir}/:%{buildroot}%{_libdir}" \
@@ -697,6 +702,27 @@ ldd %{buildroot}/%{dynload_dir}/_curses*.so \
     | grep curses \
     | grep libncurses.so && (echo "_curses.so linked against libncurses.so" ; exit 1)
 
+# Ensure that the debug modules are linked against the debug libpython, and
+# likewise for the optimized modules and libpython:
+for Module in %{buildroot}/%{dynload_dir}/*.so ; do
+    case $Module in
+    *.%{SOABI_debug})
+        ldd $Module | grep %{py_INSTSONAME_optimized} &&
+            (echo Debug module $Module linked against optimized %{py_INSTSONAME_optimized} ; exit 1)
+
+        ;;
+    *.%{SOABI_optimized})
+        ldd $Module | grep %{py_INSTSONAME_debug} &&
+            (echo Optimized module $Module linked against debug %{py_INSTSONAME_debug} ; exit 1)
+        ;;
+    esac
+done
+
+# Verify that the bundled libmpdec version python was compiled with, is the same version we have virtual
+# provides for in the SPEC.
+test "$(LD_LIBRARY_PATH=$(pwd)/build/optimized $(pwd)/build/optimized/python -c 'import decimal; print(decimal.__libmpdec_version__)')" = \
+     "%{libmpdec_version}"
+
 # ======================================================
 # Running the upstream test suite
 # ======================================================
@@ -706,36 +732,33 @@ CheckPython() {
   ConfName=$1
   ConfDir=$(pwd)/build/$ConfName
 
-  # Fedora sets explicit minimum/maximum TLS versions.
-  # Python's test suite assumes that the minimum/maximum version is set to
-  # a magic marker. We workaround the test problem by setting:
-  export OPENSSL_CONF=/non-existing-file
-  # https://bugzilla.redhat.com/show_bug.cgi?id=1618753
-  # https://bugzilla.redhat.com/show_bug.cgi?id=1778357
-  # https://bugs.python.org/issue35045
-  # https://bugs.python.org/issue38815
-
   echo STARTING: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
 
   # Note that we're running the tests using the version of the code in the
   # builddir, not in the buildroot.
 
-  # Run the upstream test suite, setting "WITHIN_PYTHON_RPM_BUILD" so that the
-  # our non-standard decorators take effect on the relevant tests:
-  #   @unittest._skipInRpmBuild(reason)
-  #   @unittest._expectedFailureInRpmBuild
-  WITHIN_PYTHON_RPM_BUILD= \
+  # Show some info, helpful for debugging test failures
+  LD_LIBRARY_PATH=$ConfDir $ConfDir/python -m test.pythoninfo
+
+  # Run the upstream test suite
+  # --timeout=1800: kill test running for longer than 30 minutes
+  # test_distutils
+  #   distutils.tests.test_bdist_rpm tests fail when bootstraping the Python
+  #   package: rpmbuild requires /usr/bin/pythonX.Y to be installed
+  # test_gdb on arm on Fedora 33:
+  #   https://bugzilla.redhat.com/show_bug.cgi?id=1846390
   LD_LIBRARY_PATH=$ConfDir $ConfDir/python -m test.regrtest \
-    -wW --slowest --findleaks \
+    -wW --slowest -j0 --timeout=1800 \
+    %if %{with bootstrap}
     -x test_distutils \
-    -x test_bdist_rpm \
+    %endif
     %ifarch %{mips64}
     -x test_ctypes \
     %endif
-    %ifarch ppc64le
-    -x test_buffer \
-    -x test_tarfile \
-    -x test_ssl \
+    %ifarch %{arm}
+    %if 0%{?fedora} < 34 && 0%{?rhel} < 9
+    -x test_gdb \
+    %endif
     %endif
 
   echo FINISHED: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
@@ -745,26 +768,18 @@ CheckPython() {
 %if %{with tests}
 
 # Check each of the configurations:
+%if %{with debug_build}
+CheckPython debug
+%endif # with debug_build
 CheckPython optimized
 
-%endif
-
-
+%endif # with tests
 # ======================================================
 # Scriptlets
 # ======================================================
 
-# Convert lib64 symlink into a real dir to avoid transaction conflicts during upgrades.
-# See: https://fedoraproject.org/wiki/Packaging:Directory_Replacement#Scriptlet_to_replace_a_symlink_to_a_directory_with_a_directory
-%pretrans -p <lua>
-path = "%{_libdir}"
-st = posix.stat(path)
-if st and st.type == "link" then
-  os.remove(path)
-end
-
 %files
-%doc README.rst LICENSE
+%doc README.rst
 
 # In /opt/openquake we are the owners of bin, usr and so on
 %dir %{_prefix}
@@ -775,39 +790,476 @@ end
 %endif
 %dir %{_includedir}
 %dir %{_datadir}
+%dir %{pylibdir}
+%dir %{dynload_dir}
 
-%{_bindir}/pydoc3
-%{_bindir}/python3
-%{_bindir}/pip3
-
-%{_bindir}/pydoc%{pybasever}
-%{_bindir}/python%{pybasever}
-%{_bindir}/pip%{pybasever}
-%{_bindir}/easy_install-%{pybasever}
-%{_mandir}
-
-%{pylibdir}/
-
-%if "%{_lib}" == "lib64"
-%{_prefix}/lib/python%{pybasever}
+%{pylibdir}/lib2to3
+%if %{without flatpackage}
+%exclude %{pylibdir}/lib2to3/tests
 %endif
 
-%{_includedir}/python%{LDVERSION_optimized}/
+%dir %{pylibdir}/unittest/
+%dir %{pylibdir}/unittest/__pycache__/
+%{pylibdir}/unittest/*.py
+%{pylibdir}/unittest/__pycache__/*%{bytecode_suffixes}
 
+%dir %{pylibdir}/asyncio/
+%dir %{pylibdir}/asyncio/__pycache__/
+%{pylibdir}/asyncio/*.py
+%{pylibdir}/asyncio/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/venv/
+%dir %{pylibdir}/venv/__pycache__/
+%{pylibdir}/venv/*.py
+%{pylibdir}/venv/__pycache__/*%{bytecode_suffixes}
+%{pylibdir}/venv/scripts
+
+%{pylibdir}/wsgiref
+%{pylibdir}/xmlrpc
+
+%dir %{pylibdir}/ensurepip/
+%dir %{pylibdir}/ensurepip/__pycache__/
+%{pylibdir}/ensurepip/*.py
+%{pylibdir}/ensurepip/__pycache__/*%{bytecode_suffixes}
+
+%if %{with rpmwheels}
+%exclude %{pylibdir}/ensurepip/_bundled
+%else
+%dir %{pylibdir}/ensurepip/_bundled
+%{pylibdir}/ensurepip/_bundled/*.whl
+%{pylibdir}/ensurepip/_bundled/__init__.py
+%{pylibdir}/ensurepip/_bundled/__pycache__/*%{bytecode_suffixes}
+%endif
+
+%dir %{pylibdir}/concurrent/
+%dir %{pylibdir}/concurrent/__pycache__/
+%{pylibdir}/concurrent/*.py
+%{pylibdir}/concurrent/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/concurrent/futures/
+%dir %{pylibdir}/concurrent/futures/__pycache__/
+%{pylibdir}/concurrent/futures/*.py
+%{pylibdir}/concurrent/futures/__pycache__/*%{bytecode_suffixes}
+
+%{pylibdir}/pydoc_data
+
+%{dynload_dir}/_blake2.%{SOABI_optimized}.so
+%{dynload_dir}/_md5.%{SOABI_optimized}.so
+%{dynload_dir}/_sha1.%{SOABI_optimized}.so
+%{dynload_dir}/_sha256.%{SOABI_optimized}.so
+%{dynload_dir}/_sha3.%{SOABI_optimized}.so
+%{dynload_dir}/_sha512.%{SOABI_optimized}.so
+
+%{dynload_dir}/_asyncio.%{SOABI_optimized}.so
+%{dynload_dir}/_bisect.%{SOABI_optimized}.so
+%{dynload_dir}/_bz2.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_cn.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_hk.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_iso2022.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_jp.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_kr.%{SOABI_optimized}.so
+%{dynload_dir}/_codecs_tw.%{SOABI_optimized}.so
+%{dynload_dir}/_contextvars.%{SOABI_optimized}.so
+%{dynload_dir}/_crypt.%{SOABI_optimized}.so
+%{dynload_dir}/_csv.%{SOABI_optimized}.so
+%{dynload_dir}/_ctypes.%{SOABI_optimized}.so
+%{dynload_dir}/_curses.%{SOABI_optimized}.so
+%{dynload_dir}/_curses_panel.%{SOABI_optimized}.so
+%{dynload_dir}/_dbm.%{SOABI_optimized}.so
+%{dynload_dir}/_decimal.%{SOABI_optimized}.so
+%{dynload_dir}/_elementtree.%{SOABI_optimized}.so
+%if %{with gdbm}
+%{dynload_dir}/_gdbm.%{SOABI_optimized}.so
+%endif
+%{dynload_dir}/_hashlib.%{SOABI_optimized}.so
+%{dynload_dir}/_heapq.%{SOABI_optimized}.so
+%{dynload_dir}/_json.%{SOABI_optimized}.so
+%{dynload_dir}/_lsprof.%{SOABI_optimized}.so
+%{dynload_dir}/_lzma.%{SOABI_optimized}.so
+%{dynload_dir}/_multibytecodec.%{SOABI_optimized}.so
+%{dynload_dir}/_multiprocessing.%{SOABI_optimized}.so
+%{dynload_dir}/_opcode.%{SOABI_optimized}.so
+%{dynload_dir}/_pickle.%{SOABI_optimized}.so
+%{dynload_dir}/_posixsubprocess.%{SOABI_optimized}.so
+%{dynload_dir}/_queue.%{SOABI_optimized}.so
+%{dynload_dir}/_random.%{SOABI_optimized}.so
+%{dynload_dir}/_socket.%{SOABI_optimized}.so
+%{dynload_dir}/_sqlite3.%{SOABI_optimized}.so
+%{dynload_dir}/_ssl.%{SOABI_optimized}.so
+%{dynload_dir}/_statistics.%{SOABI_optimized}.so
+%{dynload_dir}/_struct.%{SOABI_optimized}.so
+%{dynload_dir}/array.%{SOABI_optimized}.so
+%{dynload_dir}/audioop.%{SOABI_optimized}.so
+%{dynload_dir}/binascii.%{SOABI_optimized}.so
+%{dynload_dir}/cmath.%{SOABI_optimized}.so
+%{dynload_dir}/_datetime.%{SOABI_optimized}.so
+%{dynload_dir}/fcntl.%{SOABI_optimized}.so
+%{dynload_dir}/grp.%{SOABI_optimized}.so
+%{dynload_dir}/math.%{SOABI_optimized}.so
+%{dynload_dir}/mmap.%{SOABI_optimized}.so
+%{dynload_dir}/nis.%{SOABI_optimized}.so
+%{dynload_dir}/ossaudiodev.%{SOABI_optimized}.so
+%{dynload_dir}/parser.%{SOABI_optimized}.so
+%{dynload_dir}/_posixshmem.%{SOABI_optimized}.so
+%{dynload_dir}/pyexpat.%{SOABI_optimized}.so
+%{dynload_dir}/readline.%{SOABI_optimized}.so
+%{dynload_dir}/resource.%{SOABI_optimized}.so
+%{dynload_dir}/select.%{SOABI_optimized}.so
+%{dynload_dir}/spwd.%{SOABI_optimized}.so
+%{dynload_dir}/syslog.%{SOABI_optimized}.so
+%{dynload_dir}/termios.%{SOABI_optimized}.so
+%{dynload_dir}/unicodedata.%{SOABI_optimized}.so
+%{dynload_dir}/_uuid.%{SOABI_optimized}.so
+%{dynload_dir}/xxlimited.%{SOABI_optimized}.so
+%{dynload_dir}/_xxsubinterpreters.%{SOABI_optimized}.so
+%{dynload_dir}/zlib.%{SOABI_optimized}.so
+%{dynload_dir}/_zoneinfo.%{SOABI_optimized}.so
+
+%dir %{pylibdir}/site-packages/
+%dir %{pylibdir}/site-packages/__pycache__/
+%{pylibdir}/site-packages/README.txt
+%{pylibdir}/*.py
+%dir %{pylibdir}/__pycache__/
+%{pylibdir}/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/collections/
+%dir %{pylibdir}/collections/__pycache__/
+%{pylibdir}/collections/*.py
+%{pylibdir}/collections/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/ctypes/
+%dir %{pylibdir}/ctypes/__pycache__/
+%{pylibdir}/ctypes/*.py
+%{pylibdir}/ctypes/__pycache__/*%{bytecode_suffixes}
+%{pylibdir}/ctypes/macholib
+
+%{pylibdir}/curses
+
+%dir %{pylibdir}/dbm/
+%dir %{pylibdir}/dbm/__pycache__/
+%{pylibdir}/dbm/*.py
+%{pylibdir}/dbm/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/distutils/
+%dir %{pylibdir}/distutils/__pycache__/
+%{pylibdir}/distutils/*.py
+%{pylibdir}/distutils/__pycache__/*%{bytecode_suffixes}
+%{pylibdir}/distutils/README
+%{pylibdir}/distutils/command
+
+%dir %{pylibdir}/email/
+%dir %{pylibdir}/email/__pycache__/
+%{pylibdir}/email/*.py
+%{pylibdir}/email/__pycache__/*%{bytecode_suffixes}
+%{pylibdir}/email/mime
+%doc %{pylibdir}/email/architecture.rst
+
+%{pylibdir}/encodings
+
+%{pylibdir}/html
+%{pylibdir}/http
+
+%dir %{pylibdir}/importlib/
+%dir %{pylibdir}/importlib/__pycache__/
+%{pylibdir}/importlib/*.py
+%{pylibdir}/importlib/__pycache__/*%{bytecode_suffixes}
+
+%dir %{pylibdir}/json/
+%dir %{pylibdir}/json/__pycache__/
+%{pylibdir}/json/*.py
+%{pylibdir}/json/__pycache__/*%{bytecode_suffixes}
+
+%{pylibdir}/logging
+%{pylibdir}/multiprocessing
+
+%dir %{pylibdir}/sqlite3/
+%dir %{pylibdir}/sqlite3/__pycache__/
+%{pylibdir}/sqlite3/*.py
+%{pylibdir}/sqlite3/__pycache__/*%{bytecode_suffixes}
+
+%if %{without flatpackage}
+%exclude %{pylibdir}/turtle.py
+%exclude %{pylibdir}/__pycache__/turtle*%{bytecode_suffixes}
+%endif
+
+%{pylibdir}/urllib
+%{pylibdir}/xml
+%{pylibdir}/zoneinfo
+
+%if "%{_lib}" == "lib64"
+%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}
+%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages
+%attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}/site-packages/__pycache__/
+%endif
+
+# "Makefile" and the config-32/64.h file are needed by
+# distutils/sysconfig.py:_init_posix(), so we include them in the core
+# package, along with their parent directories (bug 531901):
+%dir %{pylibdir}/config-%{LDVERSION_optimized}-%{platform_triplet}/
+%{pylibdir}/config-%{LDVERSION_optimized}-%{platform_triplet}/Makefile
+%dir %{_includedir}/python%{LDVERSION_optimized}/
+%{_includedir}/python%{LDVERSION_optimized}/%{_pyconfig_h}
+
+%{_libdir}/%{py_INSTSONAME_optimized}
+%if %{with main_python}
+%{_libdir}/libpython3.so
+%endif
+
+
+%if %{without flatpackage}
+%files -n %{pkgname}-devel
+%endif
+
+%if %{with main_python}
+%{_bindir}/2to3
+%endif
+
+%{pylibdir}/config-%{LDVERSION_optimized}-%{platform_triplet}/*
+%if %{without flatpackage}
+%exclude %{pylibdir}/config-%{LDVERSION_optimized}-%{platform_triplet}/Makefile
+%exclude %{_includedir}/python%{LDVERSION_optimized}/%{_pyconfig_h}
+%endif
+%{_includedir}/python%{LDVERSION_optimized}/*.h
+%{_includedir}/python%{LDVERSION_optimized}/internal/
+%{_includedir}/python%{LDVERSION_optimized}/cpython/
+%doc Misc/README.valgrind Misc/valgrind-python.supp Misc/gdbinit
+
+%if %{with main_python}
 %{_bindir}/python3-config
-%{_bindir}/python%{pybasever}-config
-%{_bindir}/python%{LDVERSION_optimized}-*-config
-%{_libdir}/libpython%{LDVERSION_optimized}.a
-%dir %{_libdir}/pkgconfig
+%{_bindir}/python-config
 %{_libdir}/pkgconfig/python3.pc
+%{_libdir}/pkgconfig/python.pc
 %{_libdir}/pkgconfig/python3-embed.pc
+%{_bindir}/pathfix.py
+%{_bindir}/pygettext3.py
+%{_bindir}/pygettext.py
+%{_bindir}/msgfmt3.py
+%{_bindir}/msgfmt.py
+%endif
+
+%{_bindir}/pathfix%{pybasever}.py
+%{_bindir}/pygettext%{pybasever}.py
+%{_bindir}/msgfmt%{pybasever}.py
+
+%{_bindir}/python%{pybasever}-config
+%{_bindir}/python%{LDVERSION_optimized}-config
+%{_bindir}/python%{LDVERSION_optimized}-*-config
+%{_libdir}/libpython%{LDVERSION_optimized}.so
+%{_libdir}/pkgconfig/python-%{LDVERSION_optimized}.pc
+%{_libdir}/pkgconfig/python-%{LDVERSION_optimized}-embed.pc
 %{_libdir}/pkgconfig/python-%{pybasever}.pc
 %{_libdir}/pkgconfig/python-%{pybasever}-embed.pc
 
-%{_bindir}/2to3
-%{_bindir}/2to3-%{pybasever}
-%{_bindir}/idle3
+%if %{with rhel8_compat_shims}
+%{_libexecdir}/platform-python-config
+%{_libexecdir}/platform-python%{pybasever}-config
+%{_libexecdir}/platform-python%{LDVERSION_optimized}-config
+%{_libexecdir}/platform-python%{pybasever}-*-config
+%{_libexecdir}/platform-python%{LDVERSION_optimized}-*-config
+%endif
+
+
+%if %{without flatpackage}
+%files -n %{pkgname}-idle
+%endif
+
+%if %{with main_python}
+%{_bindir}/idle*
+%else
 %{_bindir}/idle%{pybasever}
+%endif
+
+%{pylibdir}/idlelib
+
+%if %{with main_python}
+%{_metainfodir}/idle3.appdata.xml
+%{_datadir}/applications/idle3.desktop
+%{_datadir}/icons/hicolor/*/apps/idle3.*
+%endif
+
+%if %{without flatpackage}
+%files -n %{pkgname}-tkinter
+%endif
+
+%{pylibdir}/tkinter
+%if %{without flatpackage}
+%exclude %{pylibdir}/tkinter/test
+%endif
+%{dynload_dir}/_tkinter.%{SOABI_optimized}.so
+%{pylibdir}/turtle.py
+%{pylibdir}/__pycache__/turtle*%{bytecode_suffixes}
+%dir %{pylibdir}/turtledemo
+%{pylibdir}/turtledemo/*.py
+%{pylibdir}/turtledemo/*.cfg
+%dir %{pylibdir}/turtledemo/__pycache__/
+%{pylibdir}/turtledemo/__pycache__/*%{bytecode_suffixes}
+
+
+%if %{without flatpackage}
+%files -n %{pkgname}-test
+%endif
+
+%{pylibdir}/ctypes/test
+%{pylibdir}/distutils/tests
+%{pylibdir}/sqlite3/test
+%{pylibdir}/test
+%{dynload_dir}/_ctypes_test.%{SOABI_optimized}.so
+%{dynload_dir}/_testbuffer.%{SOABI_optimized}.so
+%{dynload_dir}/_testcapi.%{SOABI_optimized}.so
+%{dynload_dir}/_testimportmultiple.%{SOABI_optimized}.so
+%{dynload_dir}/_testinternalcapi.%{SOABI_optimized}.so
+%{dynload_dir}/_testmultiphase.%{SOABI_optimized}.so
+%{dynload_dir}/_xxtestfuzz.%{SOABI_optimized}.so
+%{pylibdir}/lib2to3/tests
+%{pylibdir}/tkinter/test
+%{pylibdir}/unittest/test
+
+# We don't bother splitting the debug build out into further subpackages:
+# if you need it, you're probably a developer.
+
+# Hence the manifest is the combination of analogous files in the manifests of
+# all of the other subpackages
+
+%if %{with debug_build}
+%if %{without flatpackage}
+%files -n %{pkgname}-debug
+%endif
+
+%if %{with main_python}
+%{_bindir}/python3-debug
+%{_bindir}/python-debug
+%endif
+
+# Analog of the core subpackage's files:
+%{_bindir}/python%{LDVERSION_debug}
+
+# Analog of the -libs subpackage's files:
+# ...with debug builds of the built-in "extension" modules:
+
+%{dynload_dir}/_blake2.%{SOABI_debug}.so
+%{dynload_dir}/_md5.%{SOABI_debug}.so
+%{dynload_dir}/_sha1.%{SOABI_debug}.so
+%{dynload_dir}/_sha256.%{SOABI_debug}.so
+%{dynload_dir}/_sha3.%{SOABI_debug}.so
+%{dynload_dir}/_sha512.%{SOABI_debug}.so
+
+%{dynload_dir}/_asyncio.%{SOABI_debug}.so
+%{dynload_dir}/_bisect.%{SOABI_debug}.so
+%{dynload_dir}/_bz2.%{SOABI_debug}.so
+%{dynload_dir}/_codecs_cn.%{SOABI_debug}.so
+%{dynload_dir}/_codecs_hk.%{SOABI_debug}.so
+%{dynload_dir}/_codecs_iso2022.%{SOABI_debug}.so
+%{dynload_dir}/_codecs_jp.%{SOABI_debug}.so
+%{dynload_dir}/_codecs_kr.%{SOABI_debug}.so
+%{dynload_dir}/_codecs_tw.%{SOABI_debug}.so
+%{dynload_dir}/_contextvars.%{SOABI_debug}.so
+%{dynload_dir}/_crypt.%{SOABI_debug}.so
+%{dynload_dir}/_csv.%{SOABI_debug}.so
+%{dynload_dir}/_ctypes.%{SOABI_debug}.so
+%{dynload_dir}/_curses.%{SOABI_debug}.so
+%{dynload_dir}/_curses_panel.%{SOABI_debug}.so
+%{dynload_dir}/_dbm.%{SOABI_debug}.so
+%{dynload_dir}/_decimal.%{SOABI_debug}.so
+%{dynload_dir}/_elementtree.%{SOABI_debug}.so
+%if %{with gdbm}
+%{dynload_dir}/_gdbm.%{SOABI_debug}.so
+%endif
+%{dynload_dir}/_hashlib.%{SOABI_debug}.so
+%{dynload_dir}/_heapq.%{SOABI_debug}.so
+%{dynload_dir}/_json.%{SOABI_debug}.so
+%{dynload_dir}/_lsprof.%{SOABI_debug}.so
+%{dynload_dir}/_lzma.%{SOABI_debug}.so
+%{dynload_dir}/_multibytecodec.%{SOABI_debug}.so
+%{dynload_dir}/_multiprocessing.%{SOABI_debug}.so
+%{dynload_dir}/_opcode.%{SOABI_debug}.so
+%{dynload_dir}/_pickle.%{SOABI_debug}.so
+%{dynload_dir}/_posixsubprocess.%{SOABI_debug}.so
+%{dynload_dir}/_queue.%{SOABI_debug}.so
+%{dynload_dir}/_random.%{SOABI_debug}.so
+%{dynload_dir}/_socket.%{SOABI_debug}.so
+%{dynload_dir}/_sqlite3.%{SOABI_debug}.so
+%{dynload_dir}/_ssl.%{SOABI_debug}.so
+%{dynload_dir}/_statistics.%{SOABI_debug}.so
+%{dynload_dir}/_struct.%{SOABI_debug}.so
+%{dynload_dir}/array.%{SOABI_debug}.so
+%{dynload_dir}/audioop.%{SOABI_debug}.so
+%{dynload_dir}/binascii.%{SOABI_debug}.so
+%{dynload_dir}/cmath.%{SOABI_debug}.so
+%{dynload_dir}/_datetime.%{SOABI_debug}.so
+%{dynload_dir}/fcntl.%{SOABI_debug}.so
+%{dynload_dir}/grp.%{SOABI_debug}.so
+%{dynload_dir}/math.%{SOABI_debug}.so
+%{dynload_dir}/mmap.%{SOABI_debug}.so
+%{dynload_dir}/nis.%{SOABI_debug}.so
+%{dynload_dir}/ossaudiodev.%{SOABI_debug}.so
+%{dynload_dir}/parser.%{SOABI_debug}.so
+%{dynload_dir}/_posixshmem.%{SOABI_debug}.so
+%{dynload_dir}/pyexpat.%{SOABI_debug}.so
+%{dynload_dir}/readline.%{SOABI_debug}.so
+%{dynload_dir}/resource.%{SOABI_debug}.so
+%{dynload_dir}/select.%{SOABI_debug}.so
+%{dynload_dir}/spwd.%{SOABI_debug}.so
+%{dynload_dir}/syslog.%{SOABI_debug}.so
+%{dynload_dir}/termios.%{SOABI_debug}.so
+%{dynload_dir}/unicodedata.%{SOABI_debug}.so
+%{dynload_dir}/_uuid.%{SOABI_debug}.so
+%{dynload_dir}/_xxsubinterpreters.%{SOABI_debug}.so
+%{dynload_dir}/_xxtestfuzz.%{SOABI_debug}.so
+%{dynload_dir}/zlib.%{SOABI_debug}.so
+%{dynload_dir}/_zoneinfo.%{SOABI_debug}.so
+
+# No need to split things out the "Makefile" and the config-32/64.h file as we
+# do for the regular build above (bug 531901), since they're all in one package
+# now; they're listed below, under "-devel":
+
+%{_libdir}/%{py_INSTSONAME_debug}
+
+# Analog of the -devel subpackage's files:
+%{pylibdir}/config-%{LDVERSION_debug}-%{platform_triplet}
+%{_includedir}/python%{LDVERSION_debug}
+%{_bindir}/python%{LDVERSION_debug}-config
+%{_bindir}/python%{LDVERSION_debug}-*-config
+%{_libdir}/libpython%{LDVERSION_debug}.so
+%{_libdir}/libpython%{LDVERSION_debug}.so.%{py_SOVERSION}
+%{_libdir}/pkgconfig/python-%{LDVERSION_debug}.pc
+%{_libdir}/pkgconfig/python-%{LDVERSION_debug}-embed.pc
+
+%if %{with rhel8_compat_shims}
+%{_libexecdir}/platform-python-debug
+%{_libexecdir}/platform-python%{LDVERSION_debug}
+%{_libexecdir}/platform-python%{LDVERSION_debug}-config
+%{_libexecdir}/platform-python%{LDVERSION_debug}-*-config
+%endif
+
+# Analog of the -tools subpackage's files:
+#  None for now; we could build precanned versions that have the appropriate
+# shebang if needed
+
+# Analog  of the tkinter subpackage's files:
+%{dynload_dir}/_tkinter.%{SOABI_debug}.so
+
+# Analog  of the -test subpackage's files:
+%{dynload_dir}/_ctypes_test.%{SOABI_debug}.so
+%{dynload_dir}/_testbuffer.%{SOABI_debug}.so
+%{dynload_dir}/_testcapi.%{SOABI_debug}.so
+%{dynload_dir}/_testimportmultiple.%{SOABI_debug}.so
+%{dynload_dir}/_testinternalcapi.%{SOABI_debug}.so
+%{dynload_dir}/_testmultiphase.%{SOABI_debug}.so
+
+%endif # with debug_build
+
+# We put the debug-gdb.py file inside /usr/lib/debug to avoid noise from ldconfig
+# See https://bugzilla.redhat.com/show_bug.cgi?id=562980
+#
+# The /usr/lib/rpm/redhat/macros defines %%__debug_package to use
+# debugfiles.list, and it appears that everything below /usr/lib/debug and
+# (/usr/src/debug) gets added to this file (via LISTFILES) in
+# /usr/lib/rpm/find-debuginfo.sh
+#
+# Hence by installing it below /usr/lib/debug we ensure it is added to the
+# -debuginfo subpackage
+# (if it doesn't, then the rpmbuild ought to fail since the debug-gdb.py
+# payload file would be unpackaged)
 
 # Workaround for https://bugzilla.redhat.com/show_bug.cgi?id=1476593
 %undefine _debuginfo_subpackages
