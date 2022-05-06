@@ -717,7 +717,6 @@ end
 %{_bindir}/pydoc%{pybasever}
 %{_bindir}/python%{pybasever}
 %{_bindir}/pip%{pybasever}
-%{_bindir}/easy_install-%{pybasever}
 %{_mandir}
 
 %{pylibdir}/
@@ -731,7 +730,6 @@ end
 %{_bindir}/python3-config
 %{_bindir}/python%{pybasever}-config
 %{_bindir}/python%{LDVERSION_optimized}-*-config
-%{_libdir}/libpython%{LDVERSION_optimized}.a
 %dir %{_libdir}/pkgconfig
 %{_libdir}/pkgconfig/python3.pc
 %{_libdir}/pkgconfig/python3-embed.pc
@@ -751,5 +749,5 @@ end
 # ======================================================
 
 %changelog
-* Fri May 1 2020 Daniele Viganò <daniele@vigano.me> - 3.8.2-1
-- First build of oq-python38 (migrated from oq-python37)
+* Fri May 6 2022 Antonio Ettorre <antonio@openquake.org> - 3.9.12-1
+- First build of oq-python39 (migrated from oq-python38)
