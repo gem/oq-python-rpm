@@ -7,10 +7,10 @@
 # Top-level metadata
 # ==================
 
-%global pybasever 3.8
+%global pybasever 3.9
 
 # pybasever without the dot:
-%global pyshortver 38
+%global pyshortver 39
 
 Name: oq-python%{pyshortver}
 Summary: Version %{pybasever} of the Python interpreter for OpenQuake
