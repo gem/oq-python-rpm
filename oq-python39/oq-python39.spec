@@ -581,7 +581,6 @@ LD_LIBRARY_PATH=./build/optimized ./build/optimized/python \
   Tools/scripts/pathfix.py \
   -i "%{_bindir}/python%{pybasever}" -pn \
   %{buildroot} \
-  %{buildroot}%{_bindir}/*%{pybasever}.py \
   %{?with_gdb_hooks:%{buildroot}$DirHoldingGdbPy/*.py}
 
 # Remove shebang lines from .py files that aren't executable, and
