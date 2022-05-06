@@ -416,6 +416,12 @@ rm configure pyconfig.h.in
 
 %build
 
+# The build process embeds version info extracted from the Git repository
+# into the Py_GetBuildInfo and sys.version strings.
+# Our Git repository is artificial, so we don't want that.
+# Tell configure to not use git.
+export HAS_GIT=not-found
+
 # Regenerate the configure script and pyconfig.h.in
 autoconf
 autoheader
@@ -468,15 +474,15 @@ BuildPython() {
 
 %configure \
   --enable-ipv6 \
+  --enable-shared \
   --with-computed-gotos=%{computed_gotos_flag} \
   --with-system-expat \
   --with-system-ffi \
   --enable-loadable-sqlite-extensions \
   --with-dtrace \
-%if 0%{?fedora} || 0%{?el8}
   --with-lto \
-%endif
   --with-ssl-default-suites=openssl \
+  --with-builtin-hashlib-hashes=blake2 \
   $ExtraConfigArgs \
   %{nil}
 
