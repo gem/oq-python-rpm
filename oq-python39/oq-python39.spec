@@ -239,42 +239,119 @@ BuildRequires: /sbin/ifconfig
 # Source code and patches
 # =======================
 
-Source: https://www.python.org/ftp/python/%{version}/Python-%{version}.tar.xz
+Source0: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz
+Source1: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz.asc
+Source2: %{url}static/files/pubkeys.txt
+Source3: macros.python39
 
 # A simple script to check timestamps of bytecode files
 # Run in check section with Python that is currently being built
 # Originally written by bkabrda
 Source8: check-pyc-timestamps.py
 
-# 00001 #
-# Fixup distutils/unixccompiler.py to remove standard library path from rpath:
-# Was Patch0 in ivazquez' python3000 specfile:
-Patch1:         00001-rpath.patch
+# Desktop menu entry for idle3
+Source10: idle3.desktop
 
-# 00102 #
-# Change the various install paths to use /usr/lib64/ instead or /usr/lib
-# Only used when "%%{_lib}" == "lib64"
-# Not yet sent upstream.
-Patch102: 00102-lib64.patch
+# AppData file for idle3
+Source11: idle3.appdata.xml
 
-# 00251
+# (Patches taken from github.com/fedora-python/cpython)
+
+# 00001 # d06a8853cf4bae9e115f45e1d531d2dc152c5cc8
+# Fixup distutils/unixccompiler.py to remove standard library path from rpath
+# Was Patch0 in ivazquez' python3000 specfile
+Patch1: 00001-rpath.patch
+
+# 00111 # 93b40d73360053ca68b0aeec33b6a8ca167e33e2
+# Don't try to build a libpythonMAJOR.MINOR.a
+#
+# Downstream only: not appropriate for upstream.
+#
+# See https://bugzilla.redhat.com/show_bug.cgi?id=556092
+Patch111: 00111-no-static-lib.patch
+
+# 00189 # 4242864a6a12f1f4cf9fd63a6699a73f35261aa3
+# Instead of bundled wheels, use our RPM packaged wheels
+#
+# We keep them in /usr/share/python-wheels
+#
+# Downstream only: upstream bundles
+# We might eventually pursuit upstream support, but it's low prio
+Patch189: 00189-use-rpm-wheels.patch
+# The following versions of setuptools/pip are bundled when this patch is not applied.
+# The versions are written in Lib/ensurepip/__init__.py, this patch removes them.
+# When the bundled setuptools/pip wheel is updated, the patch no longer applies cleanly.
+# In such cases, the patch needs to be amended and the versions updated here:
+%global pip_version 21.1.3
+%global setuptools_version 56.0.0
+
+# 00251 # 2eabd04356402d488060bc8fe316ad13fc8a3356
+# Change user install location
+#
 # Set values of prefix and exec_prefix in distutils install command
 # to /usr/local if executable is /usr/bin/python* and RPM build
-# is not detected to make pip and distutils install into separate location
+# is not detected to make pip and distutils install into separate location.
+#
 # Fedora Change: https://fedoraproject.org/wiki/Changes/Making_sudo_pip_safe
 # Downstream only: Awaiting resources to work on upstream PEP
 Patch251: 00251-change-user-install-location.patch
 
-# 00274 #
-# Upstream uses Debian-style architecture naming. Change to match Fedora.
-Patch274: 00274-fix-arch-names.patch
-
-# 00328 #
-# Restore pyc to TIMESTAMP invalidation mode as default in rpmbubild
+# 00328 # 367fdcb5a075f083aea83ac174999272a8faf75c
+# Restore pyc to TIMESTAMP invalidation mode as default in rpmbuild
+#
+# Since Fedora 31, the $SOURCE_DATE_EPOCH is set in rpmbuild to the latest
+# %%changelog date. This makes Python default to the CHECKED_HASH pyc
+# invalidation mode, bringing more reproducible builds traded for an import
+# performance decrease. To avoid that, we don't default to CHECKED_HASH
+# when $RPM_BUILD_ROOT is set (i.e. when we are building RPM packages).
+#
 # See https://src.fedoraproject.org/rpms/redhat-rpm-config/pull-request/57#comment-27426
 # Downstream only: only used when building RPM packages
 # Ideally, we should talk to upstream and explain why we don't want this
 Patch328: 00328-pyc-timestamp-invalidation-mode.patch
+
+# 00329 #
+# Support OpenSSL FIPS mode
+# - In FIPS mode, OpenSSL wrappers are always used in hashlib
+# - The "usedforsecurity" keyword argument can be used to the various digest
+#   algorithms in hashlib so that you can whitelist a callsite with
+#   "usedforsecurity=False"
+# - OpenSSL wrappers for the hashes blake2{b512,s256},
+# - In FIPS mode, the blake2 hashes use OpenSSL wrappers
+#   and do not offer extended functionality (keys, tree hashing, custom digest size)
+# - In FIPS mode, hmac.HMAC can only be instantiated with an OpenSSL wrapper
+#   or an string with OpenSSL hash name as the "digestmod" argument.
+#   The argument must be specified (instead of defaulting to ‘md5’).
+#
+# - Also while in FIPS mode, we utilize OpenSSL's DRBG and disable the
+#   os.getrandom() function.
+#
+Patch329: 00329-fips.patch
+
+# 00353 # ab4cc97b643cfe99f567e3a03e5617b507183771
+# Original names for architectures with different names downstream
+#
+# https://fedoraproject.org/wiki/Changes/Python_Upstream_Architecture_Names
+#
+# Pythons in RHEL/Fedora used different names for some architectures
+# than upstream and other distros (for example ppc64 vs. powerpc64).
+# This was patched in patch 274, now it is sedded if %%with legacy_archnames.
+#
+# That meant that an extension built with the default upstream settings
+# (on other distro or as an manylinux wheel) could not been found by Python
+# on RHEL/Fedora because it had a different suffix.
+# This patch adds the legacy names to importlib so Python is able
+# to import extensions with a legacy architecture name in its
+# file name.
+# It work both ways, so it support both %%with and %%without legacy_archnames.
+#
+# WARNING: This patch has no effect on Python built with bootstrap
+# enabled because Python/importlib_external.h is not regenerated
+# and therefore Python during bootstrap contains importlib from
+# upstream without this feature. It's possible to include
+# Python/importlib_external.h to this patch but it'd make rebasing
+# a nightmare because it's basically a binary file.
+Patch353: 00353-architecture-names-upstream-downstream.patch
 
 # (New patches go here ^^^)
 #
@@ -288,6 +365,7 @@ Patch328: 00328-pyc-timestamp-invalidation-mode.patch
 # The patches are stored and rebased at:
 #
 #     https://github.com/fedora-python/cpython
+
 
 
 # ==========================================
