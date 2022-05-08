@@ -792,11 +792,11 @@ end
 
 %{pylibdir}
 
-{_libexecdir}/platform-python
-{_libexecdir}/platform-python%{pybasever}
-{_libexecdir}/platform-python-config
-{_libexecdir}/platform-python%{pybasever}-config
-{_libexecdir}/platform-python%{pybasever}-`uname -m`-config
+%{_libexecdir}/platform-python
+%{_libexecdir}/platform-python%{pybasever}
+%{_libexecdir}/platform-python-config
+%{_libexecdir}/platform-python%{pybasever}-config
+%{_libexecdir}/platform-python%{pybasever}-`uname -m`-config
 
 %if "%{_lib}" == "lib64"
 %attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}
@@ -842,3 +842,4 @@ end
 %changelog
 * Fri May 06 2022 Antonio Ettorre <antonio@openquake.org> - 3.9.12-1
 - First release of oq-python 3.9
+
