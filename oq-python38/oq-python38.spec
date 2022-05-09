@@ -18,10 +18,16 @@ URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
-Version: %{pybasever}.2
+%global general_version %{pybasever}.13
+%global upstream_version %{general_version}%{?prerel}
+Version: %{general_version}%{?prerel:~%{prerel}}
 Release: 1%{?dist}
 License: Python
 
+# Exclude i686 arch. Due to a modularity issue it's being added to the
+# x86_64 compose of CRB, but we don't want to ship it at all.
+# See: https://projects.engineering.redhat.com/browse/RCM-72605
+ExcludeArch: i686
 
 # ==================================
 # Conditionals controlling the build
@@ -178,7 +184,9 @@ BuildRequires: /sbin/ifconfig
 # Source code and patches
 # =======================
 
-Source: https://www.python.org/ftp/python/%{version}/Python-%{version}.tar.xz
+Source0: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz
+Source1: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz.asc
+Source2: %{url}static/files/pubkeys.txt
 
 # A simple script to check timestamps of bytecode files
 # Run in check section with Python that is currently being built
@@ -501,6 +509,9 @@ rm -rf %{buildroot}%{_bindir}/__pycache__
 # Fixup permissions for shared libraries from non-standard 555 to standard 755:
 find %{buildroot} -perm 555 -exec chmod 755 {} \;
 
+# Provide python as python3
+cp %{buildroot}%{_bindir}/python%{pybasever} %{buildroot}%{_bindir}/python
+
 # ======================================================
 # Checks for packaging issues
 # ======================================================
@@ -599,14 +610,14 @@ end
 %dir %{_includedir}
 %dir %{_datadir}
 
-%{_bindir}/pydoc3
 %{_bindir}/python3
+%{_bindir}/python
 %{_bindir}/pip3
+%{_bindir}/pydoc3
 
 %{_bindir}/pydoc%{pybasever}
 %{_bindir}/python%{pybasever}
 %{_bindir}/pip%{pybasever}
-%{_bindir}/easy_install-%{pybasever}
 %{_mandir}
 
 %{pylibdir}/
@@ -640,5 +651,8 @@ end
 # ======================================================
 
 %changelog
+* Mon May 9 2022 Antonio Ettorre <antonio@openquake.org> - 3.8.13-1
+- Upgrade to 3.8.13-1
+
 * Fri May 1 2020 Daniele Viganò <daniele@vigano.me> - 3.8.2-1
 - First build of oq-python38 (migrated from oq-python37)
