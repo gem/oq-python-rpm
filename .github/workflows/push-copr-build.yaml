@@ -2,9 +2,17 @@
 name: RPM build in Fedora Copr
 on:
   # Builf for push on master and pull request
-  push:
-    branches: [master]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      oqpython-ver:
+        description: Git Ref Branch
+        default: oq-python39
+        required: true
+      git-ref:
+        description: Git Ref Branch
+        default: master
+        required: true
 
 jobs:
 
@@ -19,15 +27,44 @@ jobs:
       GITHUB_BS_REF:  ${{ github.base_ref }}
     strategy:
       matrix:
-        oqpython-version: [oq-python37, oq-python38]
-    # Run in Fedora container on Ubuntu VM 
-        container: ["fedora:latest"]
+        epel-release: [epel-7-x86_64, rocky+epel-8-x86_64]
+    # Run in Fedora container on Ubuntu VM
 
     container:
-      image: ${{ matrix.container }}
+      image: fedora:36
+      options: --privileged
     steps:
-      - name: Clone Repository 
+      - name: Clone Repository (Latest)
         uses: actions/checkout@v2
+        if: github.event.inputs.git-ref == ''
+      - name: Clone Repository (Custom Ref)
+        uses: actions/checkout@v2
+        if: github.event.inputs.git-ref != ''
+        with:
+          ref: ${{ github.event.inputs.git-ref }}
+
+      - name: Install tooling for source RPM build
+        run: |
+          dnf -y install @development-tools @rpm-development-tools \
+          copr-cli mock make gcc openssl-devel bzip2-devel libffi-devel
+
+      - name: Build RPM from SPEC files
+        env:
+          pyver: ${{ github.event.inputs.oqpython-ver }}
+        run: |
+          mkdir -p ~/rpmbuild/{RPMS,SOURCES,SPECS,SRPMS}
+          echo "Python version:  ${pyver}"
+          if [[ "$pyver" != "" ]]
+          then
+            cd ${python-ver}
+          else
+            cd oq-python39
+          fi
+          cp oq-python.spec ~/rpmbuild/SPECS/
+          ls -lrt
+          spectool -g -R ~/rpmbuild/SPECS/oq-python.spec
+          rpmbuild -bs  ~/rpmbuild/SPECS/oq-python.spec
+          mock -r ${{ matrix.epel-release}} ~/rpmbuild/SRPMS/oq-python39-3.9.12-1.fc36.src.rpm
 
       - name: Install API token for copr-cli
         env:
@@ -35,11 +72,3 @@ jobs:
         run: |
           mkdir -p "$HOME/.config"
           echo "$API_TOKEN_CONTENT" > "$HOME/.config/copr"
-          ls -lrt
-          cd ${{ matrix.oqpython-version }} 
-          ls -lrt
-
-      - name: Install tooling for source RPM build
-        run: |
-          dnf -y install @development-tools @rpm-development-tools
-          dnf -y install copr-cli make
