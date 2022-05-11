@@ -21,7 +21,7 @@ jobs:
       matrix:
         oqpython-version: [oq-python39]
     # Run in Fedora container on Ubuntu VM 
-        container: ["fedora:latest"]
+        container: ["fedora:36"]
 
     container:
       image: ${{ matrix.container }}
@@ -32,16 +32,12 @@ jobs:
 
       - name: Install tooling for source RPM build
         run: |
-          dnf -y install @development-tools @rpm-development-tools
-          dnf -y install copr-cli mock 
-          dnf -y install make gcc openssl-devel bzip2-devel libffi-devel
+          dnf -y install @development-tools @rpm-development-tools \
+          copr-cli mock make gcc openssl-devel bzip2-devel libffi-devel
 
       - name: Build RPM from SPEC files
         run: |
-          pwd
-          cd $HOME
-          pwd
-          mkdir -p rpmbuild/{RPMS,SOURCES,SPECS,SRPMS}
+          mkdir -p ~/rpmbuild/{RPMS,SOURCES,SPECS,SRPMS}
           cd ${{ matrix.oqpython-version }} 
           cp oq-python.spec ~/rpmbuild/SPECS/
           ls -lrt
