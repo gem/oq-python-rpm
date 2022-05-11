@@ -3,7 +3,7 @@ name: RPM build in Fedora Copr
 on:
   # Builf for push on master and pull request
   push:
-    branches: [master]
+    branches: [python39]
   pull_request:
 
 jobs:
@@ -19,15 +19,33 @@ jobs:
       GITHUB_BS_REF:  ${{ github.base_ref }}
     strategy:
       matrix:
-        oqpython-version: [oq-python37, oq-python38]
+        oqpython-version: [oq-python39]
     # Run in Fedora container on Ubuntu VM 
         container: ["fedora:latest"]
 
     container:
       image: ${{ matrix.container }}
+      options: --privileged
     steps:
       - name: Clone Repository 
         uses: actions/checkout@v2
+
+      - name: Install tooling for source RPM build
+        run: |
+          dnf -y install @development-tools @rpm-development-tools
+          dnf -y install copr-cli mock 
+          dnf -y install make gcc openssl-devel bzip2-devel libffi-devel
+
+      - name: Build RPM from SPEC files
+        run: |
+          pwd
+          cd $HOME
+          pwd
+          mkdir -p rpmbuild/{RPMS,SOURCES,SPECS,SRPMS}
+          cd ${{ matrix.oqpython-version }} 
+          cp oq-python.spec ~/rpmbuild/SPECS/
+          ls -lrt
+          spectool -g -R ~/rpmbuild/SPECS/oq-python.spec 
 
       - name: Install API token for copr-cli
         env:
@@ -35,11 +53,9 @@ jobs:
         run: |
           mkdir -p "$HOME/.config"
           echo "$API_TOKEN_CONTENT" > "$HOME/.config/copr"
-          ls -lrt
-          cd ${{ matrix.oqpython-version }} 
-          ls -lrt
 
-      - name: Install tooling for source RPM build
-        run: |
-          dnf -y install @development-tools @rpm-development-tools
-          dnf -y install copr-cli make
+$ dnf download --source python38
+$ rpm -ivh python3-3.8.2-2.fc32.src.rpm
+$ spectool -g -R ~/rpmbuild/SPECS/oq-python38.spec
+$ rpmbuild -bs ~/rpmbuild/SPECS/oq-python38.spec
+$ mock -r epel-8-x86_64 ~/rpmbuild/SRPMS/oq-python38-3.8.2-1.fc32.src.rpm
