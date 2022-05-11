@@ -64,11 +64,16 @@ jobs:
           ls -lrt
           spectool -g -R ~/rpmbuild/SPECS/oq-python.spec
           rpmbuild -bs  ~/rpmbuild/SPECS/oq-python.spec
-          mock -r ${{ matrix.epel-release}} ~/rpmbuild/SRPMS/oq-python39-3.9.12-1.fc36.src.rpm
+          SRPM=$(ls ~/rpmbuild/SRPMS/*.src.rpm)
+          mock -r ${{ matrix.epel-release}} $SRPM
 
-      - name: Install API token for copr-cli
+      - name: Publish Package on COPR
         env:
           API_TOKEN_CONTENT: ${{ secrets.COPR_API_TOKEN }}
+          COPR_REPO: openquake
         run: |
           mkdir -p "$HOME/.config"
           echo "$API_TOKEN_CONTENT" > "$HOME/.config/copr"
+          echo "COPR REPO: $COPR_REPO"
+          SRPM=$(ls ~/rpmbuild/SRPMS/*.src.rpm)
+          copr-cli build ${COPR_REPO} $SRPM
