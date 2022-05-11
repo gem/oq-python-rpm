@@ -2,8 +2,6 @@
 name: RPM build in Fedora Copr
 on:
   # Builf for push on master and pull request
-  push:
-    branches: [python39]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -36,8 +34,14 @@ jobs:
       image: fedora:36
       options: --privileged
     steps:
-      - name: Clone Repository
+      - name: Clone Repository (Latest)
         uses: actions/checkout@v2
+        if: github.event.inputs.git-ref == ''
+      - name: Clone Repository (Custom Ref)
+        uses: actions/checkout@v2
+        if: github.event.inputs.git-ref != ''
+        with:
+          ref: ${{ github.event.inputs.git-ref }}
 
       - name: Install tooling for source RPM build
         run: |
@@ -45,9 +49,17 @@ jobs:
           copr-cli mock make gcc openssl-devel bzip2-devel libffi-devel
 
       - name: Build RPM from SPEC files
+        env:
+          python-ver: ${{ github.event.inputs.oqpython-ver }} 
         run: |
           mkdir -p ~/rpmbuild/{RPMS,SOURCES,SPECS,SRPMS}
-          cd ${{ github.event.inputs.oqpython-ver }}
+          echo "Python version: " $python-ver
+          if [[ "$python-ver" != "" ]]                                                
+          then                                                                    
+            cd $python-ver
+          else                                                                    
+            cd oq-python39                     
+          fi
           cp oq-python.spec ~/rpmbuild/SPECS/
           ls -lrt
           spectool -g -R ~/rpmbuild/SPECS/oq-python.spec
