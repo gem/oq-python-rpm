@@ -5,6 +5,16 @@ on:
   push:
     branches: [python39]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      oqpython-ver:
+        description: Git Ref Branch
+        default: oq-python39
+        required: true
+      git-ref:
+        description: Git Ref Branch
+        default: master
+        required: true
 
 jobs:
 
@@ -19,15 +29,14 @@ jobs:
       GITHUB_BS_REF:  ${{ github.base_ref }}
     strategy:
       matrix:
-        oqpython-version: [oq-python39]
         epel-release: [epel-7-x86_64, rocky+epel-8-x86_64]
-    # Run in Fedora container on Ubuntu VM 
+    # Run in Fedora container on Ubuntu VM
 
     container:
       image: fedora:36
       options: --privileged
     steps:
-      - name: Clone Repository 
+      - name: Clone Repository
         uses: actions/checkout@v2
 
       - name: Install tooling for source RPM build
@@ -38,10 +47,10 @@ jobs:
       - name: Build RPM from SPEC files
         run: |
           mkdir -p ~/rpmbuild/{RPMS,SOURCES,SPECS,SRPMS}
-          cd ${{ matrix.oqpython-version }} 
+          cd ${{ github.event.inputs.oqpython-ver }}
           cp oq-python.spec ~/rpmbuild/SPECS/
           ls -lrt
-          spectool -g -R ~/rpmbuild/SPECS/oq-python.spec 
+          spectool -g -R ~/rpmbuild/SPECS/oq-python.spec
           rpmbuild -bs  ~/rpmbuild/SPECS/oq-python.spec
           mock -r ${{ matrix.epel-release}} ~/rpmbuild/SRPMS/oq-python39-3.9.12-1.fc36.src.rpm
 
