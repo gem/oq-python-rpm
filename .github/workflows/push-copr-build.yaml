@@ -20,6 +20,7 @@ jobs:
     strategy:
       matrix:
         oqpython-version: [oq-python39]
+        epel-release: [epel-7-x86_64, rocky+epel-8-x86_64]
     # Run in Fedora container on Ubuntu VM 
 
     container:
@@ -42,6 +43,7 @@ jobs:
           ls -lrt
           spectool -g -R ~/rpmbuild/SPECS/oq-python.spec 
           rpmbuild -bs  ~/rpmbuild/SPECS/oq-python.spec
+          mock -r ${{ matrix.epel-release}} ~/rpmbuild/SRPMS/oq-python39-3.9.12-1.fc36.src.rpm
 
       - name: Install API token for copr-cli
         env:
