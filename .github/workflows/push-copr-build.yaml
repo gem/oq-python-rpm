@@ -50,15 +50,15 @@ jobs:
 
       - name: Build RPM from SPEC files
         env:
-          python-ver: ${{ github.event.inputs.oqpython-ver }} 
+          pyver: ${{ github.event.inputs.oqpython-ver }}
         run: |
           mkdir -p ~/rpmbuild/{RPMS,SOURCES,SPECS,SRPMS}
-          echo "Python version: " $python-ver
-          if [[ "$python-ver" != "" ]]                                                
-          then                                                                    
-            cd $python-ver
-          else                                                                    
-            cd oq-python39                     
+          echo "Python version:  ${pyver}"
+          if [[ "$pyver" != "" ]]
+          then
+            cd ${python-ver}
+          else
+            cd oq-python39
           fi
           cp oq-python.spec ~/rpmbuild/SPECS/
           ls -lrt
