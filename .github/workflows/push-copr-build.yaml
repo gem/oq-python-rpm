@@ -70,7 +70,7 @@ jobs:
       - name: Publish Package on COPR
         env:
           API_TOKEN_CONTENT: ${{ secrets.COPR_API_TOKEN }}
-          COPR_REPO: 'openquake'
+          COPR_REPO: openquake
         run: |
           mkdir -p "$HOME/.config"
           echo "$API_TOKEN_CONTENT" > "$HOME/.config/copr"
