@@ -184,11 +184,6 @@ BuildRequires: /sbin/ifconfig
 Source0: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz
 Source1: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz.asc
 
-# A simple script to check timestamps of bytecode files
-# Run in check section with Python that is currently being built
-# Originally written by bkabrda
-Source8: check-pyc-timestamps.py
-
 
 # ==========================================
 # Descriptions, and metadata for subpackages
