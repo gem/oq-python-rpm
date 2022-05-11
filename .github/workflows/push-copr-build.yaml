@@ -21,10 +21,9 @@ jobs:
       matrix:
         oqpython-version: [oq-python39]
     # Run in Fedora container on Ubuntu VM 
-        container: ["fedora:36"]
 
     container:
-      image: ${{ matrix.container }}
+      image: fedora:36
       options: --privileged
     steps:
       - name: Clone Repository 
@@ -42,6 +41,7 @@ jobs:
           cp oq-python.spec ~/rpmbuild/SPECS/
           ls -lrt
           spectool -g -R ~/rpmbuild/SPECS/oq-python.spec 
+          rpmbuild -bs  ~/rpmbuild/SPECS/oq-python.spec
 
       - name: Install API token for copr-cli
         env:

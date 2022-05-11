@@ -183,7 +183,6 @@ BuildRequires: /sbin/ifconfig
 
 Source0: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz
 Source1: %{url}ftp/python/%{general_version}/Python-%{upstream_version}.tar.xz.asc
-Source2: %{url}static/files/pubkeys.txt
 
 # A simple script to check timestamps of bytecode files
 # Run in check section with Python that is currently being built
@@ -470,7 +469,6 @@ end
 #
 %{_includedir}/python%{LDVERSION_optimized}/
 #
-#%{_bindir}/python%{LDVERSION_optimized}-*-config
 %{_libdir}/libpython%{LDVERSION_optimized}.a
 %dir %{_libdir}/pkgconfig
 %{_libdir}/pkgconfig/python3.pc
@@ -491,8 +489,5 @@ end
 # ======================================================
 
 %changelog
-* Mon May 9 2022 Antonio Ettorre <antonio@openquake.org> - 3.8.13-1
-- Upgrade to 3.8.13-1
-
-* Fri May 1 2020 Daniele Viganò <daniele@vigano.me> - 3.8.2-1
-- First build of oq-python38 (migrated from oq-python37)
+* Mon May 9 2022 Antonio Ettorre <antonio@openquake.org> - 3.9.12-1
+- First build of oq-python39 
