@@ -53,9 +53,3 @@ jobs:
         run: |
           mkdir -p "$HOME/.config"
           echo "$API_TOKEN_CONTENT" > "$HOME/.config/copr"
-
-$ dnf download --source python38
-$ rpm -ivh python3-3.8.2-2.fc32.src.rpm
-$ spectool -g -R ~/rpmbuild/SPECS/oq-python38.spec
-$ rpmbuild -bs ~/rpmbuild/SPECS/oq-python38.spec
-$ mock -r epel-8-x86_64 ~/rpmbuild/SRPMS/oq-python38-3.8.2-1.fc32.src.rpm
