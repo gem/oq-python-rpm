@@ -60,7 +60,7 @@ jobs:
           echo "Python version:  ${pyver}"
           if [[ "$pyver" != "" ]]
           then
-            cd ${python-ver}
+            cd ${pyver}
           else
             cd oq-python39
           fi
