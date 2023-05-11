@@ -128,10 +128,6 @@ License: Python
 
 # (keep this list alphabetized)
 
-%if 0%{?fedora} >= 27
-BuildRequires: libnsl2-devel
-%endif
-
 BuildRequires: autoconf
 BuildRequires: bluez-libs-devel
 BuildRequires: bzip2
@@ -143,10 +139,12 @@ BuildRequires: gcc-c++
 BuildRequires: gdbm-devel
 BuildRequires: git-core
 BuildRequires: glibc-devel
+BuildRequires: glibc-all-langpacks
 BuildRequires: gmp-devel
 BuildRequires: gnupg2
 BuildRequires: libappstream-glib
 BuildRequires: libffi-devel
+BuildRequires: libnsl2-devel
 BuildRequires: libtirpc-devel
 BuildRequires: libGL-devel
 BuildRequires: libuuid-devel
@@ -156,6 +154,7 @@ BuildRequires: ncurses-devel
 BuildRequires: openssl-devel
 BuildRequires: pkgconfig
 BuildRequires: readline-devel
+BuildRequires: redhat-rpm-config >= 127
 BuildRequires: sqlite-devel
 BuildRequires: gdb
 
@@ -163,6 +162,7 @@ BuildRequires: tar
 BuildRequires: tcl-devel
 BuildRequires: tix-devel
 BuildRequires: tk-devel
+BuildRequires: tzdata
 
 BuildRequires: xz-devel
 BuildRequires: zlib-devel
@@ -170,11 +170,11 @@ BuildRequires: zlib-devel
 BuildRequires: /usr/bin/dtrace
 
 # workaround http://bugs.python.org/issue19804 (test_uuid requires ifconfig)
-%if 0%{?fedora} || 0%{?el8}
-BuildRequires: /usr/sbin/ifconfig
-%else
-BuildRequires: /sbin/ifconfig
-%endif
+#%if 0%{?fedora} || 0%{?el8}
+#BuildRequires: /usr/sbin/ifconfig
+#%else
+#BuildRequires: /sbin/ifconfig
+#%endif
 
 
 # =======================
