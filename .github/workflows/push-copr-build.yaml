@@ -35,7 +35,7 @@ jobs:
     # Run in Fedora container on Ubuntu VM
 
     container:
-      image: fedora:38
+      image: fedora:36
       options: --privileged
     steps:
       - name: Clone Repository (Latest)
