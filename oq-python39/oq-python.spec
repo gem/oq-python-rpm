@@ -139,12 +139,12 @@ BuildRequires: gcc-c++
 BuildRequires: gdbm-devel
 BuildRequires: git-core
 BuildRequires: glibc-devel
-BuildRequires: glibc-all-langpacks
+#BuildRequires: glibc-all-langpacks
 BuildRequires: gmp-devel
 BuildRequires: gnupg2
 BuildRequires: libappstream-glib
 BuildRequires: libffi-devel
-BuildRequires: libnsl2-devel
+#BuildRequires: libnsl2-devel
 BuildRequires: libtirpc-devel
 BuildRequires: libGL-devel
 BuildRequires: libuuid-devel
@@ -154,7 +154,7 @@ BuildRequires: ncurses-devel
 BuildRequires: openssl-devel
 BuildRequires: pkgconfig
 BuildRequires: readline-devel
-BuildRequires: redhat-rpm-config >= 127
+#BuildRequires: redhat-rpm-config >= 127
 BuildRequires: sqlite-devel
 BuildRequires: gdb
 
