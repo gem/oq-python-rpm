@@ -18,7 +18,7 @@ URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
-%global general_version %{pybasever}.12
+%global general_version %{pybasever}.13
 %global upstream_version %{general_version}%{?prerel}
 Version: %{general_version}%{?prerel:~%{prerel}}
 Release: 1%{?dist}
@@ -144,7 +144,6 @@ BuildRequires: gmp-devel
 BuildRequires: gnupg2
 BuildRequires: libappstream-glib
 BuildRequires: libffi-devel
-#BuildRequires: libnsl2-devel
 BuildRequires: libtirpc-devel
 BuildRequires: libGL-devel
 BuildRequires: libuuid-devel
@@ -154,7 +153,6 @@ BuildRequires: ncurses-devel
 BuildRequires: openssl-devel
 BuildRequires: pkgconfig
 BuildRequires: readline-devel
-#BuildRequires: redhat-rpm-config >= 127
 BuildRequires: sqlite-devel
 BuildRequires: gdb
 
@@ -168,6 +166,12 @@ BuildRequires: xz-devel
 BuildRequires: zlib-devel
 
 BuildRequires: /usr/bin/dtrace
+
+%if 0%{?el7}
+%else
+BuildRequires: redhat-rpm-config >= 127
+BuildRequires: libnsl2-devel
+%endif
 
 # workaround http://bugs.python.org/issue19804 (test_uuid requires ifconfig)
 #%if 0%{?fedora} || 0%{?el8}
@@ -484,5 +488,9 @@ end
 # ======================================================
 
 %changelog
+* Fri May 11 2023 Antonio Ettorre <antonio@openquake.org> - 3.9.13-1
+- Upgrade to 3.9.13-1
+
 * Mon May 9 2022 Antonio Ettorre <antonio@openquake.org> - 3.9.12-1
 - First build of oq-python39 
+
