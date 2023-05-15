@@ -18,7 +18,7 @@ URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
-%global general_version %{pybasever}.13
+%global general_version %{pybasever}.16
 %global upstream_version %{general_version}%{?prerel}
 Version: %{general_version}%{?prerel:~%{prerel}}
 Release: 1%{?dist}
@@ -174,11 +174,7 @@ BuildRequires: libnsl2-devel
 %endif
 
 # workaround http://bugs.python.org/issue19804 (test_uuid requires ifconfig)
-#%if 0%{?fedora} || 0%{?el8}
 #BuildRequires: /usr/sbin/ifconfig
-#%else
-#BuildRequires: /sbin/ifconfig
-#%endif
 
 
 # =======================
@@ -272,17 +268,13 @@ BuildPython() {
 
   %configure \
     --with-platlibdir=%{_lib} \
-    --with-computed-gotos \
-    --with-system-libmpdec \
-    --with-computed-gotos \
     --with-system-expat \
     --with-system-ffi \
     --enable-loadable-sqlite-extensions \
-    --with-system-libmpdec \
     --with-dtrace \
     --with-ssl-default-suites=openssl \
-    --with-fpectl \
-    --enable-optimization \
+    --with-lto \
+    --enable-optimizations \
     --with-ensurepip
 
   %make_build EXTRA_CFLAGS="$CFLAGS $MoreCFlags"
@@ -488,8 +480,8 @@ end
 # ======================================================
 
 %changelog
-* Mon MAy 15 2023 Antonio Ettorre <antonio@openquake.org> - 3.9.13-1
-- Upgrade to 3.9.13-1
+* Mon May 15 2023 Antonio Ettorre <antonio@openquake.org> - 3.9.16-1
+- Upgrade to 3.9.16-1
 
 * Mon May 9 2022 Antonio Ettorre <antonio@openquake.org> - 3.9.12-1
 - First build of oq-python39 
