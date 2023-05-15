@@ -273,7 +273,6 @@ BuildPython() {
     --enable-loadable-sqlite-extensions \
     --with-dtrace \
     --with-ssl-default-suites=openssl \
-    --with-lto \
     --enable-optimizations \
     --with-ensurepip
 
