@@ -18,7 +18,7 @@ URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
-%global general_version %{pybasever}.16
+%global general_version %{pybasever}.13
 %global upstream_version %{general_version}%{?prerel}
 Version: %{general_version}%{?prerel:~%{prerel}}
 Release: 1%{?dist}
@@ -481,9 +481,6 @@ end
 # ======================================================
 
 %changelog
-* Fri May 12 2023 Antonio Ettorre <antonio@openquake.org> - 3.9.16-1
-- Upgrade to 3.9.16-1
-
 * Thu May 11 2023 Antonio Ettorre <antonio@openquake.org> - 3.9.13-1
 - Upgrade to 3.9.13-1
 
