@@ -488,7 +488,7 @@ end
 # ======================================================
 
 %changelog
-* Fri May 11 2023 Antonio Ettorre <antonio@openquake.org> - 3.9.13-1
+* Mon MAy 15 2023 Antonio Ettorre <antonio@openquake.org> - 3.9.13-1
 - Upgrade to 3.9.13-1
 
 * Mon May 9 2022 Antonio Ettorre <antonio@openquake.org> - 3.9.12-1
